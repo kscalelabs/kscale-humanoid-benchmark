@@ -30,10 +30,21 @@ warn_redundant_casts = true
 incremental = true
 namespace_packages = false
 
-# Uncomment to exclude modules from Mypy.
-# [[tool.mypy.overrides]]
-# module = []
-# ignore_missing_imports = true
+[[tool.mypy.overrides]]
+
+module = [
+    "_pytest.*",
+    "distrax.*",
+    "equinox.*",
+    "glfw.*",
+    "mujoco.*",
+    "optax.*",
+    "scipy.*",
+    "bvhio.*",
+    "glm.*",
+    "imageio.*",
+]
+ignore_missing_imports = true
 
 [tool.isort]
 
@@ -63,7 +74,7 @@ dummy-variable-rgx = "^(_+|(_+[a-zA-Z0-9_]*[a-zA-Z0-9]+?))$"
 
 [tool.ruff.lint.isort]
 
-known-first-party = ["submission", "tests"]
+known-first-party = ["benchmark", "tests"]
 combine-as-imports = true
 
 [tool.ruff.lint.pydocstyle]

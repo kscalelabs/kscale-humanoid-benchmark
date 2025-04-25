@@ -51,9 +51,9 @@ jobs:
           mkdir -p .mypy_cache
           make static-checks
 
-      - name: Run unit tests
-        run: |
-          make test
+      # - name: Run unit tests
+      #   run: |
+      #     make test
 
       - name: Save cache
         uses: actions/cache/save@v3

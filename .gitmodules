@@ -1,0 +1,6 @@
+[submodule "benchmark/--force"]
+	path = benchmark/--force
+	url = git@github.com:kscalelabs/kscale-assets.git
+[submodule "benchmark/kscale-assets"]
+	path = benchmark/kscale-assets
+	url = git@github.com:kscalelabs/kscale-assets.git

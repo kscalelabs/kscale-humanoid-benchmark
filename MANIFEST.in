@@ -1,1 +1,1 @@
-recursive-include submission/ *.py *.txt py.typed MANIFEST.in
+recursive-include benchmark/ *.py *.txt py.typed MANIFEST.in
