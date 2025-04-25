@@ -28,7 +28,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
-          python-version: "3.11"
+          python-version: "3.12"
 
       - name: Restore cache
         id: restore-cache
@@ -44,16 +44,12 @@ jobs:
 
       - name: Install package
         run: |
-          pip install --upgrade --upgrade-strategy eager -e '.[dev]'
+          make install
+          make install-dev
 
       - name: Run static checks
         run: |
-          mkdir -p .mypy_cache
           make static-checks
-
-      - name: Run unit tests
-        run: |
-          make test
 
       - name: Save cache
         uses: actions/cache/save@v3

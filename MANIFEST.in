@@ -1,1 +1,0 @@
-recursive-include submission/ *.py *.txt py.typed MANIFEST.in
