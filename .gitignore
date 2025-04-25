@@ -11,11 +11,18 @@ __pycache__/
 .ruff_cache/
 .dmypy.json
 
+# Jupyter
+.ipynb_checkpoints/
+
 # Databases
 *.db
+
+# Logs
+rollouts/
 
 # Build artifacts
 build/
 dist/
 *.so
 out*/
+**/run_*/
