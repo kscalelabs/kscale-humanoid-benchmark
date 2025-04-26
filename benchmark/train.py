@@ -336,15 +336,15 @@ class HumanoidWalkingTask(ksim.PPOTask[Config], Generic[Config]):
             # Standard rewards.
             ksim.StayAliveReward(scale=1.0),
             ksim.NaiveForwardReward(clip_min=0.0, clip_max=1.5, scale=1.0),
-            ksim.UprightReward(scale=0.5),
+            ksim.UprightReward(scale=0.1),
             # Bespoke rewards.
-            BentArmPenalty.create(physics_model, scale=-1.0),
+            BentArmPenalty.create(physics_model, scale=-0.1),
             # Normalization penalties (grow with curriculum).
-            ksim.ActuatorForcePenalty(scale=-0.1, scale_by_curriculum=True),
-            ksim.ActuatorJerkPenalty(ctrl_dt=ctrl_dt, scale=-0.1, scale_by_curriculum=True),
-            ksim.BaseJerkZPenalty(ctrl_dt=ctrl_dt, scale=-0.1, scale_by_curriculum=True),
-            ksim.ActionSmoothnessPenalty(scale=-0.5, scale_by_curriculum=True),
-            ksim.LinearVelocityPenalty(index="z", scale=-0.1, scale_by_curriculum=True),
+            ksim.ActuatorForcePenalty(scale=-0.01, scale_by_curriculum=True),
+            ksim.ActuatorJerkPenalty(ctrl_dt=ctrl_dt, scale=-0.01, scale_by_curriculum=True),
+            ksim.BaseJerkZPenalty(ctrl_dt=ctrl_dt, scale=-0.01, scale_by_curriculum=True),
+            ksim.ActionSmoothnessPenalty(scale=-0.05, scale_by_curriculum=True),
+            ksim.LinearVelocityPenalty(index="z", scale=-0.01, scale_by_curriculum=True),
         ]
 
     def get_terminations(self, physics_model: ksim.PhysicsModel) -> list[ksim.Termination]:
