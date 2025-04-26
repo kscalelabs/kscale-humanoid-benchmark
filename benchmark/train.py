@@ -250,7 +250,7 @@ class HumanoidWalkingTask(ksim.PPOTask[Config], Generic[Config]):
 
     def get_mujoco_model(self) -> mujoco.MjModel:
         mjcf_path = asyncio.run(ksim.get_mujoco_model_path("kbot-v2-feet", name="robot"))
-        return mujoco_scenes.mjcf.load_mjmodel(mjcf_path, scene="smooth")
+        return mujoco_scenes.mjcf.load_mjmodel(mjcf_path, scene="smooth_hfield")
 
     def get_mujoco_model_metadata(self, mj_model: mujoco.MjModel) -> dict[str, JointMetadataOutput]:
         metadata = asyncio.run(ksim.get_mujoco_model_metadata("kbot-v2-feet"))
@@ -272,6 +272,7 @@ class HumanoidWalkingTask(ksim.PPOTask[Config], Generic[Config]):
     def get_physics_randomizers(self, physics_model: ksim.PhysicsModel) -> list[ksim.PhysicsRandomizer]:
         return [
             ksim.StaticFrictionRandomizer(),
+            ksim.FloorFrictionRandomizer.from_geom_name(physics_model, "floor"),
             ksim.ArmatureRandomizer(),
             ksim.MassMultiplicationRandomizer.from_body_name(physics_model, "Torso_Side_Right"),
             ksim.JointDampingRandomizer(),
@@ -488,10 +489,10 @@ if __name__ == "__main__":
             epochs_per_log_step=1,
             rollout_length_seconds=8.0,
             # Simulation parameters.
-            dt=0.002,
+            dt=0.005,
             ctrl_dt=0.02,
-            iterations=3,
-            ls_iterations=5,
+            iterations=8,
+            ls_iterations=8,
             max_action_latency=0.01,
             # Checkpointing parameters.
             save_every_n_seconds=60,

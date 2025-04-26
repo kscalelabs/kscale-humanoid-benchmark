@@ -60,3 +60,11 @@ To visualize running your model without using `kos-sim`, use the command:
 ```bash
 python -m benchmark.train run_model_viewer=True
 ```
+
+## MJCF Notes
+
+First model has a lot of slipping. Fixes:
+
+- `solimp="0.9 0.95 0.02"` increases contact width from 0.001 to 0.02
+- `solref="0.04 1"` increases the time constant from 0.02 to 0.04
+- `friction="1 1 0.02 0.0001 0.0001` increases the contact friction from 0.005 to 0.02
