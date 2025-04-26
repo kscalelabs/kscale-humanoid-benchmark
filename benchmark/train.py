@@ -298,32 +298,6 @@ class HumanoidWalkingTask(ksim.PPOTask[Config], Generic[Config]):
         return ksim.MITPositionActuators(
             physics_model=physics_model,
             joint_name_to_metadata=metadata,
-            ctrl_clip=[
-                # right arm
-                MAX_TORQUE["03"],
-                MAX_TORQUE["03"],
-                MAX_TORQUE["02"],
-                MAX_TORQUE["02"],
-                MAX_TORQUE["00"],
-                # left arm
-                MAX_TORQUE["03"],
-                MAX_TORQUE["03"],
-                MAX_TORQUE["02"],
-                MAX_TORQUE["02"],
-                MAX_TORQUE["00"],
-                # right leg
-                MAX_TORQUE["04"],
-                MAX_TORQUE["03"],
-                MAX_TORQUE["03"],
-                MAX_TORQUE["04"],
-                MAX_TORQUE["02"],
-                # left leg
-                MAX_TORQUE["04"],
-                MAX_TORQUE["03"],
-                MAX_TORQUE["03"],
-                MAX_TORQUE["04"],
-                MAX_TORQUE["02"],
-            ],
         )
 
     def get_physics_randomizers(self, physics_model: ksim.PhysicsModel) -> list[ksim.PhysicsRandomizer]:
