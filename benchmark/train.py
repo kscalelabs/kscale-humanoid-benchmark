@@ -367,11 +367,19 @@ class HumanoidWalkingTask(ksim.PPOTask[Config], Generic[Config]):
         ]
 
     def get_rewards(self, physics_model: ksim.PhysicsModel) -> list[ksim.Reward]:
+        ctrl_dt = self.config.ctrl_dt
+
         return [
             ksim.StayAliveReward(scale=1.0),
             ksim.AngularVelocityPenalty(index="x", scale=-0.001),
             ksim.AngularVelocityPenalty(index="y", scale=-0.001),
             ksim.NaiveForwardReward(clip_min=0.0, clip_max=1.5, scale=1.0),
+            # Normalization penalties (grow with curriculum).
+            ksim.ActuatorForcePenalty(scale=-0.1, scale_by_curriculum=True),
+            ksim.ActuatorJerkPenalty(ctrl_dt=ctrl_dt, scale=-0.1, scale_by_curriculum=True),
+            ksim.BaseJerkZPenalty(ctrl_dt=ctrl_dt, scale=-0.1, scale_by_curriculum=True),
+            ksim.ActionSmoothnessPenalty(scale=-0.5, scale_by_curriculum=True),
+            ksim.LinearVelocityPenalty(index="z", scale=-0.1, scale_by_curriculum=True),
         ]
 
     def get_terminations(self, physics_model: ksim.PhysicsModel) -> list[ksim.Termination]:
