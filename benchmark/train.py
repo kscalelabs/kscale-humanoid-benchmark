@@ -21,7 +21,7 @@ from kscale.web.gen.api import JointMetadataOutput
 
 NUM_JOINTS = 20
 NUM_ACTOR_INPUTS = 46
-NUM_CRITIC_INPUTS = 449
+NUM_CRITIC_INPUTS = 444
 
 MAX_TORQUE = {
     "00": 1.0,
@@ -440,7 +440,6 @@ class HumanoidWalkingTask(ksim.PPOTask[Config], Generic[Config]):
         observations: xax.FrozenDict[str, Array],
         commands: xax.FrozenDict[str, Array],
     ) -> Array:
-        timestep_phase_4 = observations["timestep_phase_observation"]
         dh_joint_pos_j = observations["joint_position_observation"]
         dh_joint_vel_j = observations["joint_velocity_observation"]
         com_inertia_n = observations["center_of_mass_inertia_observation"]
@@ -451,11 +450,9 @@ class HumanoidWalkingTask(ksim.PPOTask[Config], Generic[Config]):
         act_frc_obs_n = observations["actuator_force_observation"]
         base_pos_3 = observations["base_position_observation"]
         base_quat_4 = observations["base_orientation_observation"]
-        gait_freq_cmd = commands["gait_frequency_command"]
 
         obs_n = jnp.concatenate(
             [
-                timestep_phase_4,  # 4
                 dh_joint_pos_j,  # NUM_JOINTS
                 dh_joint_vel_j / 10.0,  # NUM_JOINTS
                 com_inertia_n,  # 160
@@ -466,7 +463,6 @@ class HumanoidWalkingTask(ksim.PPOTask[Config], Generic[Config]):
                 act_frc_obs_n / 100.0,  # NUM_JOINTS
                 base_pos_3,  # 3
                 base_quat_4,  # 4
-                gait_freq_cmd,  # 1
             ],
             axis=-1,
         )
