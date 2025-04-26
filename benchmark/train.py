@@ -3,7 +3,7 @@
 import asyncio
 import math
 from dataclasses import dataclass
-from typing import Generic, TypeVar
+from typing import Generic, Self, TypeVar
 
 import attrs
 import distrax
@@ -20,8 +20,8 @@ from jaxtyping import Array, PRNGKeyArray
 from kscale.web.gen.api import JointMetadataOutput
 
 NUM_JOINTS = 20
-NUM_ACTOR_INPUTS = 51
-NUM_CRITIC_INPUTS = 449
+NUM_ACTOR_INPUTS = 46
+NUM_CRITIC_INPUTS = 444
 
 MAX_TORQUE = {
     "00": 1.0,
@@ -31,44 +31,48 @@ MAX_TORQUE = {
 }
 
 
-@attrs.define(frozen=True)
-class GaitFrequencyCommand(ksim.Command):
-    gait_freq_lower: float = attrs.field(default=1.2)
-    gait_freq_upper: float = attrs.field(default=1.5)
+@attrs.define
+class BentArmPenalty(ksim.Reward):
+    arm_indices: tuple[int, ...] = attrs.field()
+    arm_targets: tuple[float, ...] = attrs.field()
 
-    def initial_command(
-        self,
-        physics_data: ksim.PhysicsData,
-        curriculum_level: Array,
-        rng: PRNGKeyArray,
-    ) -> Array:
-        """Returns (1,) array with gait frequency."""
-        return jax.random.uniform(rng, (1,), minval=self.gait_freq_lower, maxval=self.gait_freq_upper)
+    def get_reward(self, trajectory: ksim.Trajectory) -> Array:
+        qpos = trajectory.qpos[..., self.arm_indices]
+        qpos_targets = jnp.array(self.arm_targets)
+        qpos_diff = qpos - qpos_targets
+        return xax.get_norm(qpos_diff, "l1").mean(axis=-1)
 
-    def __call__(
-        self,
-        prev_command: Array,
-        physics_data: ksim.PhysicsData,
-        curriculum_level: Array,
-        rng: PRNGKeyArray,
-    ) -> Array:
-        return prev_command
+    @classmethod
+    def create(
+        cls,
+        model: ksim.PhysicsModel,
+        scale: float,
+        scale_by_curriculum: bool = False,
+    ) -> Self:
+        joint_names = ksim.get_joint_names_in_order(model)
 
+        names_to_offsets = [
+            ("dof_right_shoulder_pitch_03", 0.0),
+            ("dof_right_shoulder_roll_03", math.radians(-10.0)),
+            ("dof_right_shoulder_yaw_02", 0.0),
+            ("dof_right_elbow_02", math.radians(90)),
+            ("dof_right_wrist_00", 0.0),
+            ("dof_left_shoulder_pitch_03", 0.0),
+            ("dof_left_shoulder_roll_03", math.radians(10.0)),
+            ("dof_left_shoulder_yaw_02", 0.0),
+            ("dof_left_elbow_02", math.radians(-90)),
+            ("dof_left_wrist_00", 0.0),
+        ]
 
-@attrs.define(frozen=True, kw_only=True)
-class TimestepPhaseObservation(ksim.TimestepObservation):
-    ctrl_dt: float = attrs.field(default=0.02)
-    stand_still_threshold: float = attrs.field(default=0.0)
+        arm_indices = [joint_names.index(name) for name, _ in names_to_offsets]
+        arm_targets = [offset for _, offset in names_to_offsets]
 
-    def observe(self, state: ksim.ObservationInput, curriculum_level: Array, rng: PRNGKeyArray) -> Array:
-        gait_freq = state.commands["gait_frequency_command"]
-        timestep = super().observe(state, curriculum_level, rng)
-        steps = timestep / self.ctrl_dt
-        phase_dt = 2 * jnp.pi * gait_freq * self.ctrl_dt
-        start_phase = jnp.array([0, jnp.pi])  # trotting gait
-        phase = start_phase + steps * phase_dt
-        phase = jnp.fmod(phase + jnp.pi, 2 * jnp.pi) - jnp.pi
-        return jnp.array([jnp.cos(phase), jnp.sin(phase)]).flatten()
+        return cls(
+            arm_indices=tuple(arm_indices),
+            arm_targets=tuple(arm_targets),
+            scale=scale,
+            scale_by_curriculum=scale_by_curriculum,
+        )
 
 
 class DefaultHumanoidActor(eqx.Module):
@@ -330,7 +334,6 @@ class HumanoidWalkingTask(ksim.PPOTask[Config], Generic[Config]):
 
     def get_observations(self, physics_model: ksim.PhysicsModel) -> list[ksim.Observation]:
         return [
-            TimestepPhaseObservation(),
             ksim.JointPositionObservation(),
             ksim.JointVelocityObservation(),
             ksim.ActuatorForceObservation(),
@@ -359,20 +362,18 @@ class HumanoidWalkingTask(ksim.PPOTask[Config], Generic[Config]):
         ]
 
     def get_commands(self, physics_model: ksim.PhysicsModel) -> list[ksim.Command]:
-        return [
-            GaitFrequencyCommand(
-                gait_freq_lower=self.config.gait_freq_lower,
-                gait_freq_upper=self.config.gait_freq_upper,
-            ),
-        ]
+        return []
 
     def get_rewards(self, physics_model: ksim.PhysicsModel) -> list[ksim.Reward]:
         ctrl_dt = self.config.ctrl_dt
 
         return [
+            # Standard rewards.
             ksim.StayAliveReward(scale=1.0),
             ksim.NaiveForwardReward(clip_min=0.0, clip_max=1.5, scale=1.0),
             ksim.UprightReward(scale=0.5),
+            # Bespoke rewards.
+            BentArmPenalty.create(physics_model, scale=-1.0),
             # Normalization penalties (grow with curriculum).
             ksim.ActuatorForcePenalty(scale=-0.1, scale_by_curriculum=True),
             ksim.ActuatorJerkPenalty(ctrl_dt=ctrl_dt, scale=-0.1, scale_by_curriculum=True),
@@ -416,21 +417,17 @@ class HumanoidWalkingTask(ksim.PPOTask[Config], Generic[Config]):
         observations: xax.FrozenDict[str, Array],
         commands: xax.FrozenDict[str, Array],
     ) -> distrax.Distribution:
-        timestep_phase_4 = observations["timestep_phase_observation"]
         joint_pos_n = observations["joint_position_observation"]
         joint_vel_n = observations["joint_velocity_observation"]
         imu_acc_3 = observations["sensor_observation_imu_acc"]
         imu_gyro_3 = observations["sensor_observation_imu_gyro"]
-        gait_freq_cmd = commands["gait_frequency_command"]
 
         obs_n = jnp.concatenate(
             [
-                timestep_phase_4,  # 4
                 joint_pos_n,  # NUM_JOINTS
                 joint_vel_n,  # NUM_JOINTS
                 imu_acc_3,  # 3
                 imu_gyro_3,  # 3
-                gait_freq_cmd,  # 1
             ],
             axis=-1,
         )
@@ -443,7 +440,6 @@ class HumanoidWalkingTask(ksim.PPOTask[Config], Generic[Config]):
         observations: xax.FrozenDict[str, Array],
         commands: xax.FrozenDict[str, Array],
     ) -> Array:
-        timestep_phase_4 = observations["timestep_phase_observation"]
         dh_joint_pos_j = observations["joint_position_observation"]
         dh_joint_vel_j = observations["joint_velocity_observation"]
         com_inertia_n = observations["center_of_mass_inertia_observation"]
@@ -454,11 +450,9 @@ class HumanoidWalkingTask(ksim.PPOTask[Config], Generic[Config]):
         act_frc_obs_n = observations["actuator_force_observation"]
         base_pos_3 = observations["base_position_observation"]
         base_quat_4 = observations["base_orientation_observation"]
-        gait_freq_cmd = commands["gait_frequency_command"]
 
         obs_n = jnp.concatenate(
             [
-                timestep_phase_4,  # 4
                 dh_joint_pos_j,  # NUM_JOINTS
                 dh_joint_vel_j / 10.0,  # NUM_JOINTS
                 com_inertia_n,  # 160
@@ -469,7 +463,6 @@ class HumanoidWalkingTask(ksim.PPOTask[Config], Generic[Config]):
                 act_frc_obs_n / 100.0,  # NUM_JOINTS
                 base_pos_3,  # 3
                 base_quat_4,  # 4
-                gait_freq_cmd,  # 1
             ],
             axis=-1,
         )
