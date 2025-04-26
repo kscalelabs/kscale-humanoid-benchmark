@@ -32,7 +32,7 @@ MAX_TORQUE = {
 
 
 @attrs.define
-class BentArmReward(ksim.Reward):
+class BentArmPenalty(ksim.Reward):
     arm_indices: tuple[int, ...] = attrs.field()
     arm_targets: tuple[float, ...] = attrs.field()
 
@@ -40,7 +40,7 @@ class BentArmReward(ksim.Reward):
         qpos = trajectory.qpos[..., self.arm_indices]
         qpos_targets = jnp.array(self.arm_targets)
         qpos_diff = qpos - qpos_targets
-        return ksim.norm_to_reward(xax.get_norm(qpos_diff, "l1"), 1.0, "exp")
+        return xax.get_norm(qpos_diff, "l1").mean(axis=-1)
 
     @classmethod
     def create(
@@ -49,7 +49,6 @@ class BentArmReward(ksim.Reward):
         scale: float,
         scale_by_curriculum: bool = False,
     ) -> Self:
-        breakpoint()
         joint_names = ksim.get_joint_names_in_order(model)
 
         names_to_offsets = [
@@ -374,7 +373,7 @@ class HumanoidWalkingTask(ksim.PPOTask[Config], Generic[Config]):
             ksim.NaiveForwardReward(clip_min=0.0, clip_max=1.5, scale=1.0),
             ksim.UprightReward(scale=0.5),
             # Bespoke rewards.
-            BentArmReward.create(physics_model, scale=1.0),
+            BentArmPenalty.create(physics_model, scale=-1.0),
             # Normalization penalties (grow with curriculum).
             ksim.ActuatorForcePenalty(scale=-0.1, scale_by_curriculum=True),
             ksim.ActuatorJerkPenalty(ctrl_dt=ctrl_dt, scale=-0.1, scale_by_curriculum=True),
