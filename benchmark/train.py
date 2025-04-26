@@ -23,13 +23,6 @@ NUM_JOINTS = 20
 NUM_ACTOR_INPUTS = 46
 NUM_CRITIC_INPUTS = 444
 
-MAX_TORQUE = {
-    "00": 1.0,
-    "02": 14.0,
-    "03": 40.0,
-    "04": 60.0,
-}
-
 
 @attrs.define
 class BentArmPenalty(ksim.Reward):
@@ -200,16 +193,6 @@ class HumanoidWalkingTaskConfig(ksim.PPOConfig):
         help="The number of mixtures for the actor.",
     )
 
-    # Command parameters.
-    gait_freq_lower: float = xax.field(
-        value=1.25,
-        help="The lower bound for the gait frequency.",
-    )
-    gait_freq_upper: float = xax.field(
-        value=1.5,
-        help="The upper bound for the gait frequency.",
-    )
-
     # Optimizer parameters.
     learning_rate: float = xax.field(
         value=1e-3,
@@ -222,24 +205,6 @@ class HumanoidWalkingTaskConfig(ksim.PPOConfig):
     adam_weight_decay: float = xax.field(
         value=0.0,
         help="Weight decay for the Adam optimizer.",
-    )
-
-    # Mujoco parameters.
-    kp: float = xax.field(
-        value=1.0,
-        help="The Kp for the actuators",
-    )
-    kd: float = xax.field(
-        value=0.1,
-        help="The Kd for the actuators",
-    )
-    armature: float = xax.field(
-        value=1e-2,
-        help="A value representing the effective inertia of the actuator armature",
-    )
-    friction: float = xax.field(
-        value=1e-6,
-        help="The dynamic friction loss for the actuator",
     )
 
     # Curriculum parameters.
@@ -517,14 +482,6 @@ class HumanoidWalkingTask(ksim.PPOTask[Config], Generic[Config]):
 
 
 if __name__ == "__main__":
-    # To run training, use the following command:
-    #   python -m examples.walking
-    # To visualize the environment, use the following command:
-    #   python -m examples.walking run_model_viewer=True
-    # On MacOS or other devices with less memory, you can change the number
-    # of environments and batch size to reduce memory usage. Here's an example
-    # from the command line:
-    #   python -m examples.walking num_envs=8 rollouts_per_batch=4
     HumanoidWalkingTask.launch(
         HumanoidWalkingTaskConfig(
             # Training parameters.
@@ -533,8 +490,6 @@ if __name__ == "__main__":
             num_passes=2,
             epochs_per_log_step=1,
             rollout_length_seconds=8.0,
-            # Logging parameters.
-            # log_full_trajectory_every_n_seconds=60,
             # Simulation parameters.
             dt=0.002,
             ctrl_dt=0.02,
