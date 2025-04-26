@@ -371,7 +371,7 @@ class HumanoidWalkingTask(ksim.PPOTask[Config], Generic[Config]):
             ksim.StayAliveReward(scale=1.0),
             ksim.AngularVelocityPenalty(index="x", scale=-0.001),
             ksim.AngularVelocityPenalty(index="y", scale=-0.001),
-            ksim.NaiveForwardReward(scale=1.0),
+            ksim.NaiveForwardReward(clip_min=0.0, clip_max=1.5, scale=1.0),
         ]
 
     def get_terminations(self, physics_model: ksim.PhysicsModel) -> list[ksim.Termination]:
