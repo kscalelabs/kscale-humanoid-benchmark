@@ -20,7 +20,7 @@ from jaxtyping import Array, PRNGKeyArray
 from kscale.web.gen.api import JointMetadataOutput
 
 NUM_JOINTS = 20
-NUM_ACTOR_INPUTS = 46
+NUM_ACTOR_INPUTS = 43
 NUM_CRITIC_INPUTS = 444
 
 
@@ -313,7 +313,7 @@ class HumanoidWalkingTask(ksim.PPOTask[Config], Generic[Config]):
             ksim.ProjectedGravityObservation.create(
                 physics_model=physics_model,
                 framequat_name="base_link_quat",
-                lag_range=(0.0, 0.1),
+                lag_range=(0.0, 0.5),
             ),
             ksim.ActuatorAccelerationObservation(),
             ksim.BasePositionObservation(),
@@ -323,7 +323,6 @@ class HumanoidWalkingTask(ksim.PPOTask[Config], Generic[Config]):
             ksim.CenterOfMassVelocityObservation(),
             ksim.SensorObservation.create(physics_model=physics_model, sensor_name="imu_acc"),
             ksim.SensorObservation.create(physics_model=physics_model, sensor_name="imu_gyro"),
-            ksim.TimestepObservation(),
         ]
 
     def get_commands(self, physics_model: ksim.PhysicsModel) -> list[ksim.Command]:
@@ -384,15 +383,13 @@ class HumanoidWalkingTask(ksim.PPOTask[Config], Generic[Config]):
     ) -> distrax.Distribution:
         joint_pos_n = observations["joint_position_observation"]
         joint_vel_n = observations["joint_velocity_observation"]
-        imu_acc_3 = observations["sensor_observation_imu_acc"]
-        imu_gyro_3 = observations["sensor_observation_imu_gyro"]
+        proj_grav_3 = observations["projected_gravity_observation"]
 
         obs_n = jnp.concatenate(
             [
                 joint_pos_n,  # NUM_JOINTS
                 joint_vel_n,  # NUM_JOINTS
-                imu_acc_3,  # 3
-                imu_gyro_3,  # 3
+                proj_grav_3,  # 3
             ],
             axis=-1,
         )
