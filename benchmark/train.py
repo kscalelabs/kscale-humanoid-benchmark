@@ -245,6 +245,7 @@ class Model(eqx.Module):
         min_std: float,
         max_std: float,
         hidden_size: int,
+        num_mixtures: int,
         depth: int,
     ) -> None:
         self.actor = Actor(
@@ -253,6 +254,7 @@ class Model(eqx.Module):
             max_std=max_std,
             var_scale=0.5,
             hidden_size=hidden_size,
+            num_mixtures=num_mixtures,
             depth=depth,
         )
         self.critic = Critic(
@@ -457,6 +459,7 @@ class HumanoidWalkingTask(ksim.PPOTask[Config], Generic[Config]):
             min_std=0.01,
             max_std=1.0,
             hidden_size=self.config.hidden_size,
+            num_mixtures=self.config.num_mixtures,
             depth=self.config.depth,
         )
 
