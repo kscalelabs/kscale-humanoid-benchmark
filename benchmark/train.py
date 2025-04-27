@@ -252,16 +252,6 @@ class HumanoidWalkingTaskConfig(ksim.PPOConfig):
         help="The minimum number of steps to wait before changing the curriculum level.",
     )
 
-    # Physics parameters.
-    impratio: float = xax.field(
-        value=100.0,
-        help="The ratio of the mass of the robot to the mass of the environment.",
-    )
-    cone_type: str = xax.field(
-        value="elliptic",
-        help="The type of cone to use for the contact model.",
-    )
-
     # Rendering parameters.
     render_track_body_id: int | None = xax.field(
         value=0,
