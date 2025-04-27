@@ -19,19 +19,19 @@ import optax
 import xax
 from jaxtyping import Array, PRNGKeyArray
 from kscale.web.gen.api import JointMetadataOutput
-
 from xax.nn.export import export
 
 NUM_JOINTS = 20
 
 # joint pos + joint vel + timestep phase + projected_gravity + imu_gyro
-OBS_SIZE = 20 * 2 + 4 + 3 + 3 
+OBS_SIZE = 20 * 2 + 4 + 3 + 3
 
 # lin vel + ang vel + gait freq
 CMD_SIZE = 2 + 1 + 1
 NUM_ACTOR_INPUTS = OBS_SIZE + CMD_SIZE
 
-# Actor inputs + foot contact + foot pos + base pos + base quat + base lin vel + base ang vel + actuator frc + base height
+# Actor inputs + foot contact + foot pos + base pos + base quat
+# + base lin vel + base ang vel + actuator frc + base height
 NUM_CRITIC_INPUTS = NUM_ACTOR_INPUTS + 2 + 6 + 3 + 4 + 3 + 3 + 20 + 1
 
 # Position targets
@@ -60,6 +60,7 @@ BIASES: list[float] = [
     math.radians(-25.0),  # dof_left_ankle_02
 ]
 
+
 @attrs.define(frozen=True)
 class GaitFrequencyCommand(ksim.Command):
     """Command to set the gait frequency of the robot."""
@@ -85,6 +86,7 @@ class GaitFrequencyCommand(ksim.Command):
     ) -> Array:
         return prev_command
 
+
 @attrs.define(frozen=True)
 class AngularVelocityCommand(ksim.Command):
     """Command to turn the robot."""
@@ -107,6 +109,7 @@ class AngularVelocityCommand(ksim.Command):
         switch_mask = jax.random.bernoulli(rng_a, self.switch_prob)
         new_commands = self.initial_command(physics_data, curriculum_level, rng_b)
         return jnp.where(switch_mask, new_commands, prev_command)
+
 
 @attrs.define(frozen=True)
 class LinearVelocityCommand(ksim.Command):
@@ -151,6 +154,7 @@ class LinearVelocityCommand(ksim.Command):
     def get_markers(self) -> Collection[ksim.vis.Marker]:
         return []
 
+
 @attrs.define(frozen=True)
 class FeetPositionObservation(ksim.Observation):
     foot_left_idx: int = attrs.field()
@@ -175,11 +179,14 @@ class FeetPositionObservation(ksim.Observation):
         )
 
     def observe(self, state: ksim.ObservationInput, curriculum_level: Array, rng: PRNGKeyArray) -> Array:
-        foot_left_pos = ksim.get_site_pose(state.physics_state.data, self.foot_left_idx)[0] + jnp.array([0.0, 0.0, self.floor_threshold])
+        foot_left_pos = ksim.get_site_pose(state.physics_state.data, self.foot_left_idx)[0] + jnp.array(
+            [0.0, 0.0, self.floor_threshold]
+        )
         foot_right_pos = ksim.get_site_pose(state.physics_state.data, self.foot_right_idx)[0] + jnp.array(
             [0.0, 0.0, self.floor_threshold]
         )
         return jnp.concatenate([foot_left_pos, foot_right_pos], axis=-1)
+
 
 @attrs.define(frozen=True, kw_only=True)
 class FeetContactObservation(ksim.FeetContactObservation):
@@ -188,14 +195,16 @@ class FeetContactObservation(ksim.FeetContactObservation):
     def observe(self, state: ksim.ObservationInput, curriculum_level: Array, rng: PRNGKeyArray) -> Array:
         feet_contact_12 = super().observe(state, curriculum_level, rng)
         return feet_contact_12.flatten()
-    
+
+
 @attrs.define(frozen=True)
 class BaseHeightObservation(ksim.Observation):
     """Observation of the base height."""
 
     def observe(self, state: ksim.ObservationInput, curriculum_level: Array, rng: PRNGKeyArray) -> Array:
         return jnp.atleast_1d(state.physics_state.data.qpos[2])
-    
+
+
 @attrs.define(frozen=True, kw_only=True)
 class TimestepPhaseObservation(ksim.TimestepObservation):
     """Observation of the phase of the timestep."""
@@ -223,6 +232,7 @@ class TimestepPhaseObservation(ksim.TimestepObservation):
         )
 
         return jnp.array([jnp.cos(phase), jnp.sin(phase)]).flatten()
+
 
 @attrs.define
 class BentArmPenalty(ksim.Reward):
@@ -266,6 +276,7 @@ class BentArmPenalty(ksim.Reward):
             scale=scale,
             scale_by_curriculum=scale_by_curriculum,
         )
+
 
 @attrs.define(frozen=True, kw_only=True)
 class FeetPhaseReward(ksim.Reward):
@@ -331,6 +342,7 @@ class FeetPhaseReward(ksim.Reward):
         stance = xax.cubic_bezier_interpolation(jnp.array(0), swing_height, 2 * x)
         swing = xax.cubic_bezier_interpolation(swing_height, jnp.array(0), 2 * x - 1)
         return jnp.where(x <= 0.5, stance, swing)
+
 
 class Actor(eqx.Module):
     """Actor for the walking task."""
@@ -696,12 +708,16 @@ class HumanoidWalkingTask(ksim.PPOTask[Config], Generic[Config]):
     def get_commands(self, physics_model: ksim.PhysicsModel) -> list[ksim.Command]:
         return [
             LinearVelocityCommand(
-                x_range=(-0.3, 0.7), y_range=(-0.2, 0.2), x_zero_prob=0.1, y_zero_prob=0.2, switch_prob=self.config.ctrl_dt / 3, # once per 3 seconds
+                x_range=(-0.3, 0.7),
+                y_range=(-0.2, 0.2),
+                x_zero_prob=0.1,
+                y_zero_prob=0.2,
+                switch_prob=self.config.ctrl_dt / 3,  # once per 3 seconds
             ),
             AngularVelocityCommand(
                 scale=0.1,
                 zero_prob=0.9,
-                switch_prob=self.config.ctrl_dt / 3, # once per 3 seconds
+                switch_prob=self.config.ctrl_dt / 3,  # once per 3 seconds
             ),
             GaitFrequencyCommand(
                 gait_freq_lower=self.config.gait_freq_lower,
@@ -921,7 +937,7 @@ class HumanoidWalkingTask(ksim.PPOTask[Config], Generic[Config]):
             carry=(actor_carry, critic_carry_in),
             aux_outputs=None,
         )
-    
+
     def make_export_model(self, model: Model) -> Callable:
         """Makes a callable inference function that directly takes a flattened input vector and returns an action.
 
@@ -937,8 +953,8 @@ class HumanoidWalkingTask(ksim.PPOTask[Config], Generic[Config]):
             return jax.vmap(model_fn)(obs, carry)
 
         return batched_model_fn
-    
-    def on_after_checkpoint_save(self, ckpt_path: Path, state: xax.State) -> xax.State:
+
+    def on_after_checkpoint_save(self, ckpt_path: Path, state: xax.State | None) -> xax.State | None:
         if not self.config.export_for_inference:
             return state
 
@@ -954,11 +970,14 @@ class HumanoidWalkingTask(ksim.PPOTask[Config], Generic[Config]):
             ),
         ]
 
-        tf_path = (
-            ckpt_path.parent / "tf_model"
-            if self.config.only_save_most_recent
-            else ckpt_path.parent / f"tf_model_{state.num_steps}"
-        )
+        if state is None:
+            tf_path = ckpt_path.parent / "tf_model"
+        else:
+            tf_path = (
+                ckpt_path.parent / "tf_model"
+                if self.config.only_save_most_recent
+                else ckpt_path.parent / f"tf_model_{state.num_steps}"
+            )
 
         export(
             model_fn,

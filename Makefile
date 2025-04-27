@@ -1,6 +1,6 @@
 # Makefile
 
-py-files := $(shell find . -name '*.py')
+py-files := $(shell find . -name '*.py' -not -path '*/run_*/*')
 
 format:
 	@black $(py-files)
