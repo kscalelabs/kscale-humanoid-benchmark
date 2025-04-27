@@ -453,9 +453,6 @@ class HumanoidWalkingTask(ksim.PPOTask[Config], Generic[Config]):
             depth=self.config.depth,
         )
 
-    def get_initial_model_carry(self, rng: PRNGKeyArray) -> None:
-        return None
-
     def run_actor(
         self,
         model: Actor,
@@ -520,7 +517,7 @@ class HumanoidWalkingTask(ksim.PPOTask[Config], Generic[Config]):
         trajectory: ksim.Trajectory,
         model_carry: tuple[Array, Array],
         rng: PRNGKeyArray,
-    ) -> tuple[ksim.PPOVariables, None]:
+    ) -> tuple[ksim.PPOVariables, tuple[Array, Array]]:
         def scan_fn(
             actor_critic_carry: tuple[Array, Array],
             transition: ksim.Trajectory,
