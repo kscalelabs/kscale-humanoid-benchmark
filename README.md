@@ -55,8 +55,20 @@ python -m benchmark.deploy
 
 ## Tips and Tricks
 
+To see all the available command line arguments, use the command:
+
+```bash
+python -m benchmark.train --help
+```
+
 To visualize running your model without using `kos-sim`, use the command:
 
 ```bash
 python -m benchmark.train run_model_viewer=True
+```
+
+This repository contains a pre-trained checkpoint, which is useful for both jump-starting model training and understanding the codebase. To initialize training from this checkpoint, use the command:
+
+```bash
+python -m benchmark.train load_from_ckpt_path=assets/ckpt.bin
 ```
