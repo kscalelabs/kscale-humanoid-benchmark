@@ -431,6 +431,7 @@ class HumanoidWalkingTask(ksim.PPOTask[Config], Generic[Config]):
             ksim.ActuatorForcePenalty(scale=-0.001),
             ksim.BaseJerkZPenalty(ctrl_dt=ctrl_dt, scale=-0.001),
             ksim.LinearVelocityPenalty(index="z", scale=-0.001),
+            ksim.AngularVelocityPenalty(index="z", scale=-0.001),
             # Bespoke rewards.
             BentArmPenalty.create(physics_model, scale=-0.1),
         ]
