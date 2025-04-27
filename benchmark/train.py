@@ -20,8 +20,32 @@ from jaxtyping import Array, PRNGKeyArray
 from kscale.web.gen.api import JointMetadataOutput
 
 NUM_JOINTS = 20
-NUM_ACTOR_INPUTS = 46
+NUM_ACTOR_INPUTS = 43
 NUM_CRITIC_INPUTS = 444
+
+
+BIASES: list[float] = [
+    0.0,  # dof_right_shoulder_pitch_03
+    math.radians(-10.0),  # dof_right_shoulder_roll_03
+    0.0,  # dof_right_shoulder_yaw_02
+    math.radians(90.0),  # dof_right_elbow_02
+    0.0,  # dof_right_wrist_00
+    0.0,  # dof_left_shoulder_pitch_03
+    math.radians(10.0),  # dof_left_shoulder_roll_03
+    0.0,  # dof_left_shoulder_yaw_02
+    math.radians(-90.0),  # dof_left_elbow_02
+    0.0,  # dof_left_wrist_00
+    math.radians(-25.0),  # dof_right_hip_pitch_04
+    0.0,  # dof_right_hip_roll_03
+    0.0,  # dof_right_hip_yaw_03
+    math.radians(-50.0),  # dof_right_knee_04
+    math.radians(25.0),  # dof_right_ankle_02
+    math.radians(25.0),  # dof_left_hip_pitch_04
+    0.0,  # dof_left_hip_roll_03
+    0.0,  # dof_left_hip_yaw_03
+    math.radians(50.0),  # dof_left_knee_04
+    math.radians(-25.0),  # dof_left_ankle_02
+]
 
 
 @attrs.define
@@ -112,6 +136,9 @@ class DefaultHumanoidActor(eqx.Module):
         mean_nm = prediction_n[:slice_len].reshape(NUM_JOINTS, self.num_mixtures)
         std_nm = prediction_n[slice_len : slice_len * 2].reshape(NUM_JOINTS, self.num_mixtures)
         logits_nm = prediction_n[slice_len * 2 :].reshape(NUM_JOINTS, self.num_mixtures)
+
+        # Biases the means.
+        mean_nm = mean_nm + jnp.array(BIASES)[:, None]
 
         # Softplus and clip to ensure positive standard deviations.
         std_nm = jnp.clip((jax.nn.softplus(std_nm) + self.min_std) * self.var_scale, max=self.max_std)
@@ -272,6 +299,7 @@ class HumanoidWalkingTask(ksim.PPOTask[Config], Generic[Config]):
     def get_physics_randomizers(self, physics_model: ksim.PhysicsModel) -> list[ksim.PhysicsRandomizer]:
         return [
             ksim.StaticFrictionRandomizer(),
+            # ksim.FloorFrictionRandomizer.from_geom_name(physics_model, "floor", scale_lower=0.95, scale_upper=1.05),
             ksim.ArmatureRandomizer(),
             ksim.MassMultiplicationRandomizer.from_body_name(physics_model, "Torso_Side_Right"),
             ksim.JointDampingRandomizer(),
@@ -313,7 +341,7 @@ class HumanoidWalkingTask(ksim.PPOTask[Config], Generic[Config]):
             ksim.ProjectedGravityObservation.create(
                 physics_model=physics_model,
                 framequat_name="base_link_quat",
-                lag_range=(0.0, 0.1),
+                lag_range=(0.0, 0.5),
             ),
             ksim.ActuatorAccelerationObservation(),
             ksim.BasePositionObservation(),
@@ -323,7 +351,6 @@ class HumanoidWalkingTask(ksim.PPOTask[Config], Generic[Config]):
             ksim.CenterOfMassVelocityObservation(),
             ksim.SensorObservation.create(physics_model=physics_model, sensor_name="imu_acc"),
             ksim.SensorObservation.create(physics_model=physics_model, sensor_name="imu_gyro"),
-            ksim.TimestepObservation(),
         ]
 
     def get_commands(self, physics_model: ksim.PhysicsModel) -> list[ksim.Command]:
@@ -350,8 +377,8 @@ class HumanoidWalkingTask(ksim.PPOTask[Config], Generic[Config]):
     def get_terminations(self, physics_model: ksim.PhysicsModel) -> list[ksim.Termination]:
         return [
             ksim.BadZTermination(unhealthy_z_lower=0.9, unhealthy_z_upper=1.6),
-            ksim.PitchTooGreatTermination(max_pitch=math.pi / 3),
-            ksim.RollTooGreatTermination(max_roll=math.pi / 3),
+            ksim.PitchTooGreatTermination(max_pitch=math.radians(30)),
+            ksim.RollTooGreatTermination(max_roll=math.radians(30)),
             ksim.FastAccelerationTermination(),
             ksim.FarFromOriginTermination(max_dist=10.0),
         ]
@@ -384,15 +411,13 @@ class HumanoidWalkingTask(ksim.PPOTask[Config], Generic[Config]):
     ) -> distrax.Distribution:
         joint_pos_n = observations["joint_position_observation"]
         joint_vel_n = observations["joint_velocity_observation"]
-        imu_acc_3 = observations["sensor_observation_imu_acc"]
-        imu_gyro_3 = observations["sensor_observation_imu_gyro"]
+        proj_grav_3 = observations["projected_gravity_observation"]
 
         obs_n = jnp.concatenate(
             [
                 joint_pos_n,  # NUM_JOINTS
                 joint_vel_n,  # NUM_JOINTS
-                imu_acc_3,  # 3
-                imu_gyro_3,  # 3
+                proj_grav_3,  # 3
             ],
             axis=-1,
         )
@@ -493,8 +518,8 @@ if __name__ == "__main__":
             # Simulation parameters.
             dt=0.002,
             ctrl_dt=0.02,
-            iterations=3,
-            ls_iterations=5,
+            iterations=8,
+            ls_iterations=8,
             max_action_latency=0.01,
             # Checkpointing parameters.
             save_every_n_seconds=60,
