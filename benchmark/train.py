@@ -417,11 +417,10 @@ class HumanoidWalkingTask(ksim.PPOTask[Config], Generic[Config]):
             ksim.NaiveForwardReward(clip_min=0.0, clip_max=0.5, scale=1.0),
             ksim.UprightReward(scale=0.1),
             # Normalization penalties (grow with curriculum).
-            ksim.ActuatorForcePenalty(scale=-0.01),
-            ksim.ActuatorJerkPenalty(ctrl_dt=ctrl_dt, scale=-0.01),
-            ksim.BaseJerkZPenalty(ctrl_dt=ctrl_dt, scale=-0.01),
-            ksim.ActionSmoothnessPenalty(scale=-0.05),
-            ksim.LinearVelocityPenalty(index="z", scale=-0.01),
+            ksim.ActionSmoothnessPenalty(scale=-0.01),
+            ksim.ActuatorForcePenalty(scale=-0.001),
+            ksim.BaseJerkZPenalty(ctrl_dt=ctrl_dt, scale=-0.001),
+            ksim.LinearVelocityPenalty(index="z", scale=-0.001),
             # Bespoke rewards.
             BentArmPenalty.create(physics_model, scale=-0.1),
         ]
