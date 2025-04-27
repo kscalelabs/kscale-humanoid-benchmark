@@ -3,7 +3,8 @@
 import asyncio
 import math
 from dataclasses import dataclass
-from typing import Generic, Self, TypeVar
+from pathlib import Path
+from typing import Callable, Collection, Generic, Self, TypeVar
 
 import attrs
 import distrax
@@ -19,10 +20,22 @@ import xax
 from jaxtyping import Array, PRNGKeyArray
 from kscale.web.gen.api import JointMetadataOutput
 
-NUM_JOINTS = 20
-NUM_ACTOR_INPUTS = 43
-NUM_CRITIC_INPUTS = 444
+from xax.nn.export import export
 
+NUM_JOINTS = 20
+
+# joint pos + joint vel + timestep phase + projected_gravity + imu_gyro
+OBS_SIZE = 20 * 2 + 4 + 3 + 3 
+
+# lin vel + ang vel + gait freq
+CMD_SIZE = 2 + 1 + 1
+NUM_ACTOR_INPUTS = OBS_SIZE + CMD_SIZE
+
+# Actor inputs + foot contact + foot pos + base pos + base quat + base lin vel + base ang vel + actuator frc + base height
+NUM_CRITIC_INPUTS = NUM_ACTOR_INPUTS + 2 + 6 + 3 + 4 + 3 + 3 + 20 + 1
+
+# Position targets
+NUM_OUTPUTS = NUM_JOINTS * 1
 
 BIASES: list[float] = [
     0.0,  # dof_right_shoulder_pitch_03
@@ -47,6 +60,169 @@ BIASES: list[float] = [
     math.radians(-25.0),  # dof_left_ankle_02
 ]
 
+@attrs.define(frozen=True)
+class GaitFrequencyCommand(ksim.Command):
+    """Command to set the gait frequency of the robot."""
+
+    gait_freq_lower: float = attrs.field(default=1.2)
+    gait_freq_upper: float = attrs.field(default=1.5)
+
+    def initial_command(
+        self,
+        physics_data: ksim.PhysicsData,
+        curriculum_level: Array,
+        rng: PRNGKeyArray,
+    ) -> Array:
+        """Returns (1,) array with gait frequency."""
+        return jax.random.uniform(rng, (1,), minval=self.gait_freq_lower, maxval=self.gait_freq_upper)
+
+    def __call__(
+        self,
+        prev_command: Array,
+        physics_data: ksim.PhysicsData,
+        curriculum_level: Array,
+        rng: PRNGKeyArray,
+    ) -> Array:
+        return prev_command
+
+@attrs.define(frozen=True)
+class AngularVelocityCommand(ksim.Command):
+    """Command to turn the robot."""
+
+    scale: float = attrs.field()
+    zero_prob: float = attrs.field(default=0.0)
+    switch_prob: float = attrs.field(default=0.0)
+
+    def initial_command(self, physics_data: ksim.PhysicsData, curriculum_level: Array, rng: PRNGKeyArray) -> Array:
+        """Returns (1,) array with angular velocity."""
+        rng_a, rng_b = jax.random.split(rng)
+        zero_mask = jax.random.bernoulli(rng_a, self.zero_prob)
+        cmd = jax.random.uniform(rng_b, (1,), minval=-self.scale, maxval=self.scale)
+        return jnp.where(zero_mask, jnp.zeros_like(cmd), cmd)
+
+    def __call__(
+        self, prev_command: Array, physics_data: ksim.PhysicsData, curriculum_level: Array, rng: PRNGKeyArray
+    ) -> Array:
+        rng_a, rng_b = jax.random.split(rng)
+        switch_mask = jax.random.bernoulli(rng_a, self.switch_prob)
+        new_commands = self.initial_command(physics_data, curriculum_level, rng_b)
+        return jnp.where(switch_mask, new_commands, prev_command)
+
+@attrs.define(frozen=True)
+class LinearVelocityCommand(ksim.Command):
+    """Command to move the robot in a straight line.
+
+    By convention, X is forward and Y is left. The switching probability is the
+    probability of resampling the command at each step. The zero probability is
+    the probability of the command being zero - this can be used to turn off
+    any command.
+    """
+
+    x_range: tuple[float, float] = attrs.field()
+    y_range: tuple[float, float] = attrs.field()
+    x_zero_prob: float = attrs.field(default=0.0)
+    y_zero_prob: float = attrs.field(default=0.0)
+    switch_prob: float = attrs.field(default=0.0)
+    vis_height: float = attrs.field(default=1.0)
+    vis_scale: float = attrs.field(default=0.05)
+
+    def initial_command(self, physics_data: ksim.PhysicsData, curriculum_level: Array, rng: PRNGKeyArray) -> Array:
+        rng_x, rng_y, rng_zero_x, rng_zero_y = jax.random.split(rng, 4)
+        (xmin, xmax), (ymin, ymax) = self.x_range, self.y_range
+        x = jax.random.uniform(rng_x, (1,), minval=xmin, maxval=xmax)
+        y = jax.random.uniform(rng_y, (1,), minval=ymin, maxval=ymax)
+        x_zero_mask = jax.random.bernoulli(rng_zero_x, self.x_zero_prob)
+        y_zero_mask = jax.random.bernoulli(rng_zero_y, self.y_zero_prob)
+        return jnp.concatenate(
+            [
+                jnp.where(x_zero_mask, 0.0, x),
+                jnp.where(y_zero_mask, 0.0, y),
+            ]
+        )
+
+    def __call__(
+        self, prev_command: Array, physics_data: ksim.PhysicsData, curriculum_level: Array, rng: PRNGKeyArray
+    ) -> Array:
+        rng_a, rng_b = jax.random.split(rng)
+        switch_mask = jax.random.bernoulli(rng_a, self.switch_prob)
+        new_commands = self.initial_command(physics_data, curriculum_level, rng_b)
+        return jnp.where(switch_mask, new_commands, prev_command)
+
+    def get_markers(self) -> Collection[ksim.vis.Marker]:
+        return []
+
+@attrs.define(frozen=True)
+class FeetPositionObservation(ksim.Observation):
+    foot_left_idx: int = attrs.field()
+    foot_right_idx: int = attrs.field()
+    floor_threshold: float = attrs.field(default=0.0)
+
+    @classmethod
+    def create(
+        cls,
+        *,
+        physics_model: ksim.PhysicsModel,
+        foot_left_site_name: str,
+        foot_right_site_name: str,
+        floor_threshold: float = 0.0,
+    ) -> Self:
+        foot_left_idx = ksim.get_site_data_idx_from_name(physics_model, foot_left_site_name)
+        foot_right_idx = ksim.get_site_data_idx_from_name(physics_model, foot_right_site_name)
+        return cls(
+            foot_left_idx=foot_left_idx,
+            foot_right_idx=foot_right_idx,
+            floor_threshold=floor_threshold,
+        )
+
+    def observe(self, state: ksim.ObservationInput, curriculum_level: Array, rng: PRNGKeyArray) -> Array:
+        foot_left_pos = ksim.get_site_pose(state.physics_state.data, self.foot_left_idx)[0] + jnp.array([0.0, 0.0, self.floor_threshold])
+        foot_right_pos = ksim.get_site_pose(state.physics_state.data, self.foot_right_idx)[0] + jnp.array(
+            [0.0, 0.0, self.floor_threshold]
+        )
+        return jnp.concatenate([foot_left_pos, foot_right_pos], axis=-1)
+
+@attrs.define(frozen=True, kw_only=True)
+class FeetContactObservation(ksim.FeetContactObservation):
+    """Observation of the feet contact."""
+
+    def observe(self, state: ksim.ObservationInput, curriculum_level: Array, rng: PRNGKeyArray) -> Array:
+        feet_contact_12 = super().observe(state, curriculum_level, rng)
+        return feet_contact_12.flatten()
+    
+@attrs.define(frozen=True)
+class BaseHeightObservation(ksim.Observation):
+    """Observation of the base height."""
+
+    def observe(self, state: ksim.ObservationInput, curriculum_level: Array, rng: PRNGKeyArray) -> Array:
+        return jnp.atleast_1d(state.physics_state.data.qpos[2])
+    
+@attrs.define(frozen=True, kw_only=True)
+class TimestepPhaseObservation(ksim.TimestepObservation):
+    """Observation of the phase of the timestep."""
+
+    ctrl_dt: float = attrs.field(default=0.02)
+    stand_still_threshold: float = attrs.field(default=0.0)
+
+    def observe(self, state: ksim.ObservationInput, curriculum_level: Array, rng: PRNGKeyArray) -> Array:
+        gait_freq = state.commands["gait_frequency_command"]
+        timestep = super().observe(state, curriculum_level, rng)
+        steps = timestep / self.ctrl_dt
+        phase_dt = 2 * jnp.pi * gait_freq * self.ctrl_dt
+        start_phase = jnp.array([0, jnp.pi])  # trotting gait
+        phase = start_phase + steps * phase_dt
+        phase = jnp.fmod(phase + jnp.pi, 2 * jnp.pi) - jnp.pi
+
+        # Stand still case
+        vel_cmd = state.commands["linear_velocity_command"]
+        ang_vel_cmd = state.commands["angular_velocity_command"]
+        cmd_norm = jnp.linalg.norm(jnp.concatenate([vel_cmd, ang_vel_cmd], axis=-1), axis=-1)
+        phase = jnp.where(
+            cmd_norm < self.stand_still_threshold,
+            jnp.array([jnp.pi / 2, jnp.pi]),  # stand still position
+            phase,
+        )
+
+        return jnp.array([jnp.cos(phase), jnp.sin(phase)]).flatten()
 
 @attrs.define
 class BentArmPenalty(ksim.Reward):
@@ -91,6 +267,70 @@ class BentArmPenalty(ksim.Reward):
             scale_by_curriculum=scale_by_curriculum,
         )
 
+@attrs.define(frozen=True, kw_only=True)
+class FeetPhaseReward(ksim.Reward):
+    """Reward for tracking the desired foot height."""
+
+    scale: float = 1.0
+    feet_pos_obs_name: str = attrs.field(default="feet_position_observation")
+    linear_velocity_cmd_name: str = attrs.field(default="linear_velocity_command")
+    angular_velocity_cmd_name: str = attrs.field(default="angular_velocity_command")
+    gait_freq_cmd_name: str = attrs.field(default="gait_frequency_command")
+    max_foot_height: float = attrs.field(default=0.12)
+    ctrl_dt: float = attrs.field(default=0.02)
+    sensitivity: float = attrs.field(default=0.01)
+    foot_default_height: float = attrs.field(default=0.0)
+    stand_still_threshold: float = attrs.field(default=0.0)
+
+    def get_reward(self, trajectory: ksim.Trajectory) -> Array:
+        if self.feet_pos_obs_name not in trajectory.obs:
+            raise ValueError(f"Observation {self.feet_pos_obs_name} not found; add it as an observation in your task.")
+        if self.gait_freq_cmd_name not in trajectory.command:
+            raise ValueError(f"Command {self.gait_freq_cmd_name} not found; add it as a command in your task.")
+
+        # generate phase values
+        gait_freq_n = trajectory.command[self.gait_freq_cmd_name]
+
+        phase_dt = 2 * jnp.pi * gait_freq_n * self.ctrl_dt
+        steps = jnp.int32(trajectory.timestep / self.ctrl_dt)
+        steps = jnp.repeat(steps[:, None], 2, axis=1)
+
+        start_phase = jnp.broadcast_to(jnp.array([0.0, jnp.pi]), (steps.shape[0], 2))
+        phase = start_phase + steps * phase_dt
+        phase = jnp.fmod(phase + jnp.pi, 2 * jnp.pi) - jnp.pi
+
+        # batch reward over the time dimension
+        foot_pos = trajectory.obs[self.feet_pos_obs_name]
+
+        foot_z = jnp.array([foot_pos[..., 2], foot_pos[..., 5]]).T
+        ideal_z = self.gait_phase(phase, swing_height=jnp.array(self.max_foot_height))
+        error = jnp.sum(jnp.square(foot_z - ideal_z), axis=-1)
+        reward = jnp.exp(-error / self.sensitivity)
+
+        # no movement for small velocity command
+        vel_cmd = trajectory.command[self.linear_velocity_cmd_name]
+        ang_vel_cmd = trajectory.command[self.angular_velocity_cmd_name]
+        command_norm = jnp.linalg.norm(jnp.concatenate([vel_cmd, ang_vel_cmd], axis=-1), axis=-1)
+        reward *= command_norm > self.stand_still_threshold
+
+        return reward
+
+    def gait_phase(
+        self,
+        phi: Array | float,
+        swing_height: Array = jnp.array(0.08),
+    ) -> Array:
+        """Interpolation logic for the gait phase.
+
+        Original implementation:
+        https://arxiv.org/pdf/2201.00206
+        https://github.com/google-deepmind/mujoco_playground/blob/main/mujoco_playground/_src/gait.py#L33
+        """
+        x = (phi + jnp.pi) / (2 * jnp.pi)
+        x = jnp.clip(x, 0, 1)
+        stance = xax.cubic_bezier_interpolation(jnp.array(0), swing_height, 2 * x)
+        swing = xax.cubic_bezier_interpolation(swing_height, jnp.array(0), 2 * x - 1)
+        return jnp.where(x <= 0.5, stance, swing)
 
 class Actor(eqx.Module):
     """Actor for the walking task."""
@@ -282,6 +522,28 @@ class HumanoidWalkingTaskConfig(ksim.PPOConfig):
         help="The number of mixtures for the actor.",
     )
 
+    # Checkpoint parameters.
+    export_for_inference: bool = xax.field(
+        value=False,
+        help="Whether to export the model for inference.",
+    )
+
+    # Command parameters.
+    gait_freq_lower: float = xax.field(
+        value=1.2,
+        help="The lower bound for the gait frequency.",
+    )
+
+    gait_freq_upper: float = xax.field(
+        value=1.5,
+        help="The upper bound for the gait frequency.",
+    )
+
+    stand_still_threshold: float = xax.field(
+        value=0.01,
+        help="The threshold for standing still.",
+    )
+
     # Optimizer parameters.
     learning_rate: float = xax.field(
         value=1e-3,
@@ -389,6 +651,7 @@ class HumanoidWalkingTask(ksim.PPOTask[Config], Generic[Config]):
 
     def get_observations(self, physics_model: ksim.PhysicsModel) -> list[ksim.Observation]:
         return [
+            TimestepPhaseObservation(stand_still_threshold=self.config.stand_still_threshold),
             ksim.JointPositionObservation(),
             ksim.JointVelocityObservation(),
             ksim.ActuatorForceObservation(),
@@ -413,10 +676,38 @@ class HumanoidWalkingTask(ksim.PPOTask[Config], Generic[Config]):
             ksim.CenterOfMassVelocityObservation(),
             ksim.SensorObservation.create(physics_model=physics_model, sensor_name="imu_acc"),
             ksim.SensorObservation.create(physics_model=physics_model, sensor_name="imu_gyro"),
+            ksim.SensorObservation.create(physics_model=physics_model, sensor_name="left_foot_force", noise=0.0),
+            ksim.SensorObservation.create(physics_model=physics_model, sensor_name="right_foot_force", noise=0.0),
+            BaseHeightObservation(),
+            FeetContactObservation.create(
+                physics_model=physics_model,
+                foot_left_geom_names="KB_D_501L_L_LEG_FOOT_collision_box",
+                foot_right_geom_names="KB_D_501R_R_LEG_FOOT_collision_box",
+                floor_geom_names="floor",
+            ),
+            FeetPositionObservation.create(
+                physics_model=physics_model,
+                foot_left_site_name="left_foot",
+                foot_right_site_name="right_foot",
+                floor_threshold=0.00,
+            ),
         ]
 
     def get_commands(self, physics_model: ksim.PhysicsModel) -> list[ksim.Command]:
-        return []
+        return [
+            LinearVelocityCommand(
+                x_range=(-0.3, 0.7), y_range=(-0.2, 0.2), x_zero_prob=0.1, y_zero_prob=0.2, switch_prob=self.config.ctrl_dt / 3, # once per 3 seconds
+            ),
+            AngularVelocityCommand(
+                scale=0.1,
+                zero_prob=0.9,
+                switch_prob=self.config.ctrl_dt / 3, # once per 3 seconds
+            ),
+            GaitFrequencyCommand(
+                gait_freq_lower=self.config.gait_freq_lower,
+                gait_freq_upper=self.config.gait_freq_upper,
+            ),
+        ]
 
     def get_rewards(self, physics_model: ksim.PhysicsModel) -> list[ksim.Reward]:
         ctrl_dt = self.config.ctrl_dt
@@ -434,6 +725,13 @@ class HumanoidWalkingTask(ksim.PPOTask[Config], Generic[Config]):
             ksim.AngularVelocityPenalty(index="z", scale=-0.001),
             # Bespoke rewards.
             BentArmPenalty.create(physics_model, scale=-0.1),
+            # Phase-based rewards.
+            FeetPhaseReward(
+                foot_default_height=0.04,
+                max_foot_height=0.12,
+                scale=2.1,
+                stand_still_threshold=self.config.stand_still_threshold,
+            ),
         ]
 
     def get_terminations(self, physics_model: ksim.PhysicsModel) -> list[ksim.Termination]:
@@ -471,15 +769,25 @@ class HumanoidWalkingTask(ksim.PPOTask[Config], Generic[Config]):
         commands: xax.FrozenDict[str, Array],
         carry: Array,
     ) -> tuple[distrax.Distribution, Array]:
+        timestep_phase_4 = observations["timestep_phase_observation"]
         joint_pos_n = observations["joint_position_observation"]
         joint_vel_n = observations["joint_velocity_observation"]
         proj_grav_3 = observations["projected_gravity_observation"]
+        imu_gyro_3 = observations["sensor_observation_imu_gyro"]
+        lin_vel_cmd_2 = commands["linear_velocity_command"]
+        ang_vel_cmd = commands["angular_velocity_command"]
+        gait_freq_cmd = commands["gait_frequency_command"]
 
         obs_n = jnp.concatenate(
             [
+                timestep_phase_4,  # 4
                 joint_pos_n,  # NUM_JOINTS
                 joint_vel_n,  # NUM_JOINTS
                 proj_grav_3,  # 3
+                imu_gyro_3,  # 3
+                lin_vel_cmd_2,  # 2
+                ang_vel_cmd,  # 1
+                gait_freq_cmd,  # 1
             ],
             axis=-1,
         )
@@ -493,29 +801,42 @@ class HumanoidWalkingTask(ksim.PPOTask[Config], Generic[Config]):
         commands: xax.FrozenDict[str, Array],
         carry: Array,
     ) -> tuple[Array, Array]:
-        dh_joint_pos_j = observations["joint_position_observation"]
-        dh_joint_vel_j = observations["joint_velocity_observation"]
-        com_inertia_n = observations["center_of_mass_inertia_observation"]
-        com_vel_n = observations["center_of_mass_velocity_observation"]
-        imu_acc_3 = observations["sensor_observation_imu_acc"]
-        imu_gyro_3 = observations["sensor_observation_imu_gyro"]
+        timestep_phase_4 = observations["timestep_phase_observation"]
+        joint_pos_n = observations["joint_position_observation"]
+        joint_vel_n = observations["joint_velocity_observation"]
         proj_grav_3 = observations["projected_gravity_observation"]
-        act_frc_obs_n = observations["actuator_force_observation"]
-        base_pos_3 = observations["base_position_observation"]
-        base_quat_4 = observations["base_orientation_observation"]
+        imu_gyro_3 = observations["sensor_observation_imu_gyro"]
+        lin_vel_cmd_2 = commands["linear_velocity_command"]
+        ang_vel_cmd = commands["angular_velocity_command"]
+        gait_freq_cmd = commands["gait_frequency_command"]
+        # Privileged observations
+        feet_contact_2 = observations["feet_contact_observation"]
+        feet_position_6 = observations["feet_position_observation"]
+        base_position_3 = observations["base_position_observation"]
+        base_orientation_4 = observations["base_orientation_observation"]
+        base_linear_velocity_3 = observations["base_linear_velocity_observation"]
+        base_angular_velocity_3 = observations["base_angular_velocity_observation"]
+        actuator_force_n = observations["actuator_force_observation"]
+        base_height_1 = observations["base_height_observation"]
 
         obs_n = jnp.concatenate(
             [
-                dh_joint_pos_j,  # NUM_JOINTS
-                dh_joint_vel_j / 10.0,  # NUM_JOINTS
-                com_inertia_n,  # 160
-                com_vel_n,  # 96
-                imu_acc_3,  # 3
-                imu_gyro_3,  # 3
+                timestep_phase_4,  # 4
+                joint_pos_n,  # NUM_JOINTS
+                joint_vel_n,  # NUM_JOINTS
                 proj_grav_3,  # 3
-                act_frc_obs_n / 100.0,  # NUM_JOINTS
-                base_pos_3,  # 3
-                base_quat_4,  # 4
+                imu_gyro_3,  # 3
+                lin_vel_cmd_2,  # 2
+                ang_vel_cmd,  # 1
+                gait_freq_cmd,  # 1
+                feet_contact_2,  # 2
+                feet_position_6,  # 6
+                base_position_3,  # 3
+                base_orientation_4,  # 4
+                base_linear_velocity_3,  # 3
+                base_angular_velocity_3,  # 3
+                actuator_force_n / 100.0,  # NUM_JOINTS
+                base_height_1,  # 1
             ],
             axis=-1,
         )
@@ -600,6 +921,52 @@ class HumanoidWalkingTask(ksim.PPOTask[Config], Generic[Config]):
             carry=(actor_carry, critic_carry_in),
             aux_outputs=None,
         )
+    
+    def make_export_model(self, model: Model) -> Callable:
+        """Makes a callable inference function that directly takes a flattened input vector and returns an action.
+
+        Returns:
+            A tuple containing the inference function and the size of the input vector.
+        """
+
+        def model_fn(obs: Array, carry: Array) -> tuple[Array, Array]:
+            dist, carry = model.actor.forward(obs, carry)
+            return dist.mode(), carry
+
+        def batched_model_fn(obs: Array, carry: Array) -> tuple[Array, Array]:
+            return jax.vmap(model_fn)(obs, carry)
+
+        return batched_model_fn
+    
+    def on_after_checkpoint_save(self, ckpt_path: Path, state: xax.State) -> xax.State:
+        if not self.config.export_for_inference:
+            return state
+
+        model: Model = self.load_ckpt(ckpt_path, part="model")[0]
+
+        model_fn = self.make_export_model(model)
+
+        input_shapes = [
+            (NUM_ACTOR_INPUTS,),
+            (
+                self.config.depth,
+                self.config.hidden_size,
+            ),
+        ]
+
+        tf_path = (
+            ckpt_path.parent / "tf_model"
+            if self.config.only_save_most_recent
+            else ckpt_path.parent / f"tf_model_{state.num_steps}"
+        )
+
+        export(
+            model_fn,
+            input_shapes,
+            tf_path,
+        )
+
+        return state
 
 
 if __name__ == "__main__":
@@ -610,7 +977,8 @@ if __name__ == "__main__":
             batch_size=256,
             num_passes=2,
             epochs_per_log_step=1,
-            rollout_length_seconds=8.0,
+            rollout_length_seconds=10.0,
+            render_length_seconds=10.0,
             # Simulation parameters.
             dt=0.002,
             ctrl_dt=0.02,
@@ -619,5 +987,6 @@ if __name__ == "__main__":
             max_action_latency=0.01,
             # Checkpointing parameters.
             save_every_n_seconds=60,
+            export_for_inference=True,
         ),
     )
