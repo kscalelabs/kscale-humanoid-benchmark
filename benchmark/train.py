@@ -100,6 +100,7 @@ class Actor(eqx.Module):
     output_proj: eqx.nn.Linear
     num_inputs: int = eqx.static_field()
     num_outputs: int = eqx.static_field()
+    num_mixtures: int = eqx.static_field()
     min_std: float = eqx.static_field()
     max_std: float = eqx.static_field()
     var_scale: float = eqx.static_field()
@@ -112,6 +113,7 @@ class Actor(eqx.Module):
         max_std: float,
         var_scale: float,
         hidden_size: int,
+        num_mixtures: int,
         depth: int,
     ) -> None:
         num_inputs = NUM_ACTOR_INPUTS
@@ -141,12 +143,13 @@ class Actor(eqx.Module):
         # Project to output
         self.output_proj = eqx.nn.Linear(
             in_features=hidden_size,
-            out_features=num_outputs * 2,
+            out_features=num_outputs * 3 * num_mixtures,
             key=key,
         )
 
         self.num_inputs = num_inputs
         self.num_outputs = num_outputs
+        self.num_mixtures = num_mixtures
         self.min_std = min_std
         self.max_std = max_std
         self.var_scale = var_scale
@@ -159,14 +162,19 @@ class Actor(eqx.Module):
             out_carries.append(x_n)
         out_n = self.output_proj(x_n)
 
-        # Converts the output to a distribution.
-        mean_n = out_n[..., : self.num_outputs]
-        std_n = out_n[..., self.num_outputs :]
+        # Reshape the output to be a mixture of gaussians.
+        slice_len = NUM_JOINTS * self.num_mixtures
+        mean_nm = out_n[..., :slice_len].reshape(NUM_JOINTS, self.num_mixtures)
+        std_nm = out_n[..., slice_len : slice_len * 2].reshape(NUM_JOINTS, self.num_mixtures)
+        logits_nm = out_n[..., slice_len * 2 :].reshape(NUM_JOINTS, self.num_mixtures)
+
+        # Add biases to the mean.
+        mean_nm = mean_nm + jnp.array(BIASES)[:, None]
 
         # Softplus and clip to ensure positive standard deviations.
-        std_n = jnp.clip((jax.nn.softplus(std_n) + self.min_std) * self.var_scale, max=self.max_std)
+        std_nm = jnp.clip((jax.nn.softplus(std_nm) + self.min_std) * self.var_scale, max=self.max_std)
 
-        dist_n = distrax.Normal(mean_n, std_n)
+        dist_n = ksim.MixtureOfGaussians(means_nm=mean_nm, stds_nm=std_nm, logits_nm=logits_nm)
         return dist_n, jnp.stack(out_carries, axis=0)
 
 
