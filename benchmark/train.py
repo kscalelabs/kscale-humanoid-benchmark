@@ -35,16 +35,16 @@ BIASES: list[float] = [
     0.0,  # dof_left_shoulder_yaw_02
     math.radians(-90.0),  # dof_left_elbow_02
     0.0,  # dof_left_wrist_00
-    0.0,  # dof_right_hip_pitch_04
-    math.radians(-15.0),  # dof_right_hip_roll_03
+    math.radians(-25.0),  # dof_right_hip_pitch_04
+    0.0,  # dof_right_hip_roll_03
     0.0,  # dof_right_hip_yaw_03
-    math.radians(-30.0),  # dof_right_knee_04
-    math.radians(15.0),  # dof_right_ankle_02
-    0.0,  # dof_left_hip_pitch_04
-    math.radians(15.0),  # dof_left_hip_roll_03
+    math.radians(-50.0),  # dof_right_knee_04
+    math.radians(25.0),  # dof_right_ankle_02
+    math.radians(25.0),  # dof_left_hip_pitch_04
+    0.0,  # dof_left_hip_roll_03
     0.0,  # dof_left_hip_yaw_03
-    math.radians(30.0),  # dof_left_knee_04
-    math.radians(-15.0),  # dof_left_ankle_02
+    math.radians(50.0),  # dof_left_knee_04
+    math.radians(-25.0),  # dof_left_ankle_02
 ]
 
 
@@ -256,6 +256,10 @@ class HumanoidWalkingTaskConfig(ksim.PPOConfig):
     impratio: float = xax.field(
         value=100.0,
         help="The ratio of the mass of the robot to the mass of the environment.",
+    )
+    cone_type: str = xax.field(
+        value="elliptic",
+        help="The type of cone to use for the contact model.",
     )
 
     # Rendering parameters.
