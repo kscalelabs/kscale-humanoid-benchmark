@@ -24,6 +24,30 @@ NUM_ACTOR_INPUTS = 43
 NUM_CRITIC_INPUTS = 444
 
 
+BIASES: list[float] = [
+    0.0,  # dof_right_shoulder_pitch_03
+    math.radians(-10.0),  # dof_right_shoulder_roll_03
+    0.0,  # dof_right_shoulder_yaw_02
+    math.radians(90.0),  # dof_right_elbow_02
+    0.0,  # dof_right_wrist_00
+    0.0,  # dof_left_shoulder_pitch_03
+    math.radians(10.0),  # dof_left_shoulder_roll_03
+    0.0,  # dof_left_shoulder_yaw_02
+    math.radians(-90.0),  # dof_left_elbow_02
+    0.0,  # dof_left_wrist_00
+    0.0,  # dof_right_hip_pitch_04
+    math.radians(-15.0),  # dof_right_hip_roll_03
+    0.0,  # dof_right_hip_yaw_03
+    math.radians(-30.0),  # dof_right_knee_04
+    math.radians(15.0),  # dof_right_ankle_02
+    0.0,  # dof_left_hip_pitch_04
+    math.radians(15.0),  # dof_left_hip_roll_03
+    0.0,  # dof_left_hip_yaw_03
+    math.radians(30.0),  # dof_left_knee_04
+    math.radians(-15.0),  # dof_left_ankle_02
+]
+
+
 @attrs.define
 class BentArmPenalty(ksim.Reward):
     arm_indices: tuple[int, ...] = attrs.field()
@@ -112,6 +136,9 @@ class DefaultHumanoidActor(eqx.Module):
         mean_nm = prediction_n[:slice_len].reshape(NUM_JOINTS, self.num_mixtures)
         std_nm = prediction_n[slice_len : slice_len * 2].reshape(NUM_JOINTS, self.num_mixtures)
         logits_nm = prediction_n[slice_len * 2 :].reshape(NUM_JOINTS, self.num_mixtures)
+
+        # Biases the means.
+        mean_nm = mean_nm + jnp.array(BIASES)[:, None]
 
         # Softplus and clip to ensure positive standard deviations.
         std_nm = jnp.clip((jax.nn.softplus(std_nm) + self.min_std) * self.var_scale, max=self.max_std)
@@ -225,6 +252,12 @@ class HumanoidWalkingTaskConfig(ksim.PPOConfig):
         help="The minimum number of steps to wait before changing the curriculum level.",
     )
 
+    # Physics parameters.
+    impratio: float = xax.field(
+        value=100.0,
+        help="The ratio of the mass of the robot to the mass of the environment.",
+    )
+
     # Rendering parameters.
     render_track_body_id: int | None = xax.field(
         value=0,
@@ -250,7 +283,7 @@ class HumanoidWalkingTask(ksim.PPOTask[Config], Generic[Config]):
 
     def get_mujoco_model(self) -> mujoco.MjModel:
         mjcf_path = asyncio.run(ksim.get_mujoco_model_path("kbot-v2-feet", name="robot"))
-        return mujoco_scenes.mjcf.load_mjmodel(mjcf_path, scene="smooth_hfield")
+        return mujoco_scenes.mjcf.load_mjmodel(mjcf_path, scene="smooth")
 
     def get_mujoco_model_metadata(self, mj_model: mujoco.MjModel) -> dict[str, JointMetadataOutput]:
         metadata = asyncio.run(ksim.get_mujoco_model_metadata("kbot-v2-feet"))
@@ -272,7 +305,7 @@ class HumanoidWalkingTask(ksim.PPOTask[Config], Generic[Config]):
     def get_physics_randomizers(self, physics_model: ksim.PhysicsModel) -> list[ksim.PhysicsRandomizer]:
         return [
             ksim.StaticFrictionRandomizer(),
-            ksim.FloorFrictionRandomizer.from_geom_name(physics_model, "floor"),
+            # ksim.FloorFrictionRandomizer.from_geom_name(physics_model, "floor", scale_lower=0.95, scale_upper=1.05),
             ksim.ArmatureRandomizer(),
             ksim.MassMultiplicationRandomizer.from_body_name(physics_model, "Torso_Side_Right"),
             ksim.JointDampingRandomizer(),
@@ -489,7 +522,7 @@ if __name__ == "__main__":
             epochs_per_log_step=1,
             rollout_length_seconds=8.0,
             # Simulation parameters.
-            dt=0.005,
+            dt=0.002,
             ctrl_dt=0.02,
             iterations=8,
             ls_iterations=8,
