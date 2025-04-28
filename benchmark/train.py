@@ -19,7 +19,6 @@ import optax
 import xax
 from jaxtyping import Array, PRNGKeyArray
 from kscale.web.gen.api import JointMetadataOutput
-
 from xax.nn.export import export as xax_export
 
 NUM_JOINTS = 20
@@ -283,6 +282,12 @@ class HumanoidWalkingTaskConfig(ksim.PPOConfig):
     num_mixtures: int = xax.field(
         value=5,
         help="The number of mixtures for the actor.",
+    )
+
+    # Checkpoint parameters.
+    export_for_inference: bool = xax.field(
+        value=False,
+        help="Whether to export the model for inference.",
     )
 
     # Optimizer parameters.
@@ -603,7 +608,7 @@ class HumanoidWalkingTask(ksim.PPOTask[Config], Generic[Config]):
             carry=(actor_carry, critic_carry_in),
             aux_outputs=None,
         )
-    
+
     def make_export_model(self, model: Model) -> Callable:
         """Makes a callable inference function that directly takes a flattened input vector and returns an action.
 
@@ -671,5 +676,6 @@ if __name__ == "__main__":
             max_action_latency=0.01,
             # Checkpointing parameters.
             save_every_n_seconds=60,
+            export_for_inference=True,
         ),
     )
