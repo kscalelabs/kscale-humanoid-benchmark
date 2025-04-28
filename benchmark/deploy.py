@@ -59,6 +59,29 @@ actuator_list: list[Actuator] = [
     Actuator(actuator_id=35, nn_id=19, kp=30.0, kd=1.0, max_torque=14.0, joint_name="dof_left_ankle_02"),
 ]
 
+home_position = {
+    21: 0.0,  # dof_right_shoulder_pitch_03
+    22: -10.0,  # dof_right_shoulder_roll_03
+    23: 0.0,  # dof_right_shoulder_yaw_02
+    24: 90.0,  # dof_right_elbow_02
+    25: 0.0,  # dof_right_wrist_00
+    11: 0.0,  # dof_left_shoulder_pitch_03
+    12: 10.0,  # dof_left_shoulder_roll_03
+    13: 0.0,  # dof_left_shoulder_yaw_02
+    14: -90.0,  # dof_left_elbow_02
+    15: 0.0,  # dof_left_wrist_00
+    41: -25.0,  # dof_right_hip_pitch_04
+    42: 0.0,  # dof_right_hip_roll_03
+    43: 0.0,  # dof_right_hip_yaw_03
+    44: -50.0,  # dof_right_knee_04
+    45: 25.0,  # dof_right_ankle_02
+    31: 25.0,  # dof_left_hip_pitch_04
+    32: 0.0,  # dof_left_hip_roll_03
+    33: 0.0,  # dof_left_hip_yaw_03
+    34: 50.0,  # dof_left_knee_04
+    35: -25.0,  # dof_left_ankle_02
+}
+
 
 @dataclass
 class DeployConfig:
@@ -212,6 +235,17 @@ async def run_policy(config: DeployConfig) -> None:
                 max_torque=ac.max_torque,
             )
 
+    async def go_home(kos_client: pykos.KOS) -> None:
+        actuator_commands: list[pykos.services.actuator.ActuatorCommand] = [
+            {
+                "actuator_id": id,
+                "position": position,
+            }
+            for id, position in home_position.items()
+        ]
+
+        await kos_client.actuator.command_actuators(actuator_commands)
+
     async def reset_sim(kos_client: pykos.KOS) -> None:
         logger.info("Resetting simulation...")
         await kos_client.sim.reset(pos={"x": 0.0, "y": 0.0, "z": 1.01}, quat={"x": 0.0, "y": 0.0, "z": 0.0, "w": 1.0})
@@ -220,6 +254,9 @@ async def run_policy(config: DeployConfig) -> None:
         os.makedirs(Path(config.log_dir) / config.run_mode, exist_ok=True)
         logger.info("Enabling motors...")
         await enable(kos_client)
+
+        logger.info("Moving to home position...")
+        await go_home(kos_client)
 
     async def postflight() -> None:
         datetime_name = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -346,6 +383,8 @@ async def run_policy(config: DeployConfig) -> None:
                 },
             },
             "config": config.to_dict(),
+            "actuator_config": [ac.__dict__ for ac in actuator_list],
+            "home_position": home_position,
             "date": datetime.now().strftime("%Y-%M-%D %H:%M:%S"),
         },
         "data": {},
