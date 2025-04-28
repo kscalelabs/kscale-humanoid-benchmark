@@ -699,7 +699,7 @@ class HumanoidWalkingTask(ksim.PPOTask[Config], Generic[Config]):
                 x_angular_force=0.1,
                 y_angular_force=0.1,
                 z_angular_force=0.3,
-                interval_range=(0.25, 0.75),
+                interval_range=(0.5, 4.0),
             ),
         ]
 
@@ -738,6 +738,8 @@ class HumanoidWalkingTask(ksim.PPOTask[Config], Generic[Config]):
             ksim.SensorObservation.create(physics_model=physics_model, sensor_name="imu_gyro"),
             ksim.SensorObservation.create(physics_model=physics_model, sensor_name="left_foot_force", noise=0.0),
             ksim.SensorObservation.create(physics_model=physics_model, sensor_name="right_foot_force", noise=0.0),
+            ksim.SensorObservation.create(physics_model=physics_model, sensor_name="local_linvel_origin", noise=0.0),
+            ksim.SensorObservation.create(physics_model=physics_model, sensor_name="gyro_origin", noise=0.0),
             BaseHeightObservation(),
             FeetContactObservation.create(
                 physics_model=physics_model,
