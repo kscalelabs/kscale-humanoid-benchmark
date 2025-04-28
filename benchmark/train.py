@@ -425,7 +425,7 @@ class HumanoidWalkingTask(ksim.PPOTask[Config], Generic[Config]):
             # Standard rewards.
             ksim.StayAliveReward(scale=1.0),
             ksim.NaiveForwardReward(clip_min=0.0, clip_max=0.5, scale=1.0),
-            ksim.UprightReward(scale=0.1),
+            ksim.UprightReward(index="x", inverted=False, scale=0.1),
             # Normalization penalties (grow with curriculum).
             ksim.ActionSmoothnessPenalty(scale=-0.01),
             ksim.ActuatorForcePenalty(scale=-0.001),
@@ -619,5 +619,9 @@ if __name__ == "__main__":
             max_action_latency=0.01,
             # Checkpointing parameters.
             save_every_n_seconds=60,
+            valid_every_n_steps=20,
+            valid_first_n_steps=1,
+            render_full_every_n_steps=2,
+            # export_for_inference=True,
         ),
     )
