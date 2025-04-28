@@ -260,6 +260,7 @@ async def run_policy(config: DeployConfig) -> None:
 
     async def postflight() -> None:
         datetime_name = datetime.now().strftime("%Y%m%d_%H%M%S")
+
         # Create the directory for this specific rollout
         rollout_dir = Path(config.log_dir) / config.run_mode / datetime_name
         rollout_dir.mkdir(parents=True, exist_ok=True)
@@ -267,7 +268,7 @@ async def run_policy(config: DeployConfig) -> None:
         rollout_file = rollout_dir / f"rollout_{datetime_name}.json"
         logger.info("Saving rollout data to %s", rollout_file)
         with open(rollout_file, "w") as f:
-            json.dump(rollout_dict, f, indent=2)  # Add indent for readability
+            json.dump(rollout_dict, f, indent=2)
 
         logger.info("Rollout data saved to %s", rollout_file)
 
@@ -385,7 +386,7 @@ async def run_policy(config: DeployConfig) -> None:
             "config": config.to_dict(),
             "actuator_config": [ac.__dict__ for ac in actuator_list],
             "home_position": home_position,
-            "date": datetime.now().strftime("%Y-%M-%D %H:%M:%S"),
+            "date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         },
         "data": {},
     }
