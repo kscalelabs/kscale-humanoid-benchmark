@@ -122,6 +122,8 @@ class StepDataDict(TypedDict):
 class HeaderDict(TypedDict):
     units: dict[str, dict[str, str]]
     config: dict[str, dict]
+    actuator_config: list[dict]
+    home_position: dict[int, float]
     date: str
 
 
@@ -173,6 +175,7 @@ async def run_policy(config: DeployConfig) -> None:
         }
 
     def obs_to_vec(obs: dict, cmd: dict) -> np.ndarray:
+        # Modify this as needed to match your model's input format
         return np.concatenate(
             [
                 obs["timestep_phase"],
