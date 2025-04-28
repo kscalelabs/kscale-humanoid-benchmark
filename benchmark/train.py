@@ -3,7 +3,8 @@
 import asyncio
 import math
 from dataclasses import dataclass
-from typing import Generic, Self, TypeVar
+from pathlib import Path
+from typing import Callable, Generic, Self, TypeVar
 
 import attrs
 import distrax
@@ -18,6 +19,8 @@ import optax
 import xax
 from jaxtyping import Array, PRNGKeyArray
 from kscale.web.gen.api import JointMetadataOutput
+
+from xax.nn.export import export as xax_export
 
 NUM_JOINTS = 20
 NUM_ACTOR_INPUTS = 43
@@ -600,6 +603,55 @@ class HumanoidWalkingTask(ksim.PPOTask[Config], Generic[Config]):
             carry=(actor_carry, critic_carry_in),
             aux_outputs=None,
         )
+    
+    def make_export_model(self, model: Model) -> Callable:
+        """Makes a callable inference function that directly takes a flattened input vector and returns an action.
+
+        Returns:
+            A tuple containing the inference function and the size of the input vector.
+        """
+
+        def model_fn(obs: Array, carry: Array) -> tuple[Array, Array]:
+            dist, carry = model.actor.forward(obs, carry)
+            return dist.mode(), carry
+
+        def batched_model_fn(obs: Array, carry: Array) -> tuple[Array, Array]:
+            return jax.vmap(model_fn)(obs, carry)
+
+        return batched_model_fn
+
+    def on_after_checkpoint_save(self, ckpt_path: Path, state: xax.State | None) -> xax.State | None:
+        if not self.config.export_for_inference:
+            return state
+
+        model: Model = self.load_ckpt(ckpt_path, part="model")[0]
+
+        model_fn = self.make_export_model(model)
+
+        input_shapes = [
+            (NUM_ACTOR_INPUTS,),
+            (
+                self.config.depth,
+                self.config.hidden_size,
+            ),
+        ]
+
+        if state is None:
+            tf_path = ckpt_path.parent / "tf_model"
+        else:
+            tf_path = (
+                ckpt_path.parent / "tf_model"
+                if self.config.only_save_most_recent
+                else ckpt_path.parent / f"tf_model_{state.num_steps}"
+            )
+
+        xax_export(
+            model_fn,
+            input_shapes,
+            tf_path,
+        )
+
+        return state
 
 
 if __name__ == "__main__":
