@@ -8,7 +8,8 @@ import os
 import time
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Literal
+from pathlib import Path
+from typing import Literal, TypeAlias, TypedDict
 
 import colorlogging
 import numpy as np
@@ -68,10 +69,12 @@ class DeployConfig:
     run_mode: RunMode = field(default="sim", metadata={"help": "Run mode"})
     joystick_enabled: bool = field(default=False, metadata={"help": "Whether to use joystick"})
     episode_length: int = field(default=10, metadata={"help": "Length of the episode to run in seconds"})
-    debug: bool = field(default=False, metadata={"help": "Whether to run in debug mode"})
     ip: str = field(default="localhost", metadata={"help": "KOS server IP address"})
     port: int = field(default=50051, metadata={"help": "KOS server port"})
+    # Logging
+    debug: bool = field(default=False, metadata={"help": "Whether to run in debug mode"})
     log_dir: str = field(default="rollouts", metadata={"help": "Directory to save rollouts"})
+    save_plots: bool = field(default=False, metadata={"help": "Whether to save plots"})
     # Policy parameters
     gait: float = field(default=1.25, metadata={"help": "Gait of the policy"})
     dt: float = field(default=0.02, metadata={"help": "Timestep of the policy"})
@@ -81,6 +84,26 @@ class DeployConfig:
 
     def to_dict(self) -> dict:
         return self.__dict__
+
+
+StepDataKey: TypeAlias = Literal("action", "obs", "cmd")
+
+
+class StepDataDict(TypedDict):
+    action: list[float]
+    obs: dict[str, list[float]]
+    cmd: dict[str, list[float]]
+
+
+class HeaderDict(TypedDict):
+    units: dict[str, dict[str, str]]
+    config: dict[str, dict]
+    date: str
+
+
+class RolloutDict(TypedDict):
+    header: HeaderDict
+    data: dict[str, StepDataDict]
 
 
 async def run_policy(config: DeployConfig) -> None:
@@ -143,7 +166,7 @@ async def run_policy(config: DeployConfig) -> None:
             raise NotImplementedError
         else:
             return {
-                "linear_command_x": np.array([0.5]),
+                "linear_command_x": np.array([0.0]),
                 "linear_command_y": np.array([0.0]),
                 "angular_command": np.array([0.0]),
             }
@@ -191,15 +214,20 @@ async def run_policy(config: DeployConfig) -> None:
         await kos_client.sim.reset(pos={"x": 0.0, "y": 0.0, "z": 1.01}, quat={"x": 0.0, "y": 0.0, "z": 0.0, "w": 1.0})
 
     async def preflight() -> None:
-        os.makedirs(config.log_dir, exist_ok=True)
+        os.makedirs(Path(config.log_dir) / config.run_mode, exist_ok=True)
         logger.info("Enabling motors...")
         await enable(kos_client)
 
     async def postflight() -> None:
-        rollout_file = f"{config.log_dir}/rollout_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+        datetime_name = datetime.now().strftime("%Y%m%d_%H%M%S")
+        # Create the directory for this specific rollout
+        rollout_dir = Path(config.log_dir) / config.run_mode / datetime_name
+        rollout_dir.mkdir(parents=True, exist_ok=True)
+
+        rollout_file = rollout_dir / f"rollout_{datetime_name}.json"
         logger.info("Saving rollout data to %s", rollout_file)
         with open(rollout_file, "w") as f:
-            json.dump(rollout_dict, f)
+            json.dump(rollout_dict, f, indent=2)  # Add indent for readability
 
         logger.info("Rollout data saved to %s", rollout_file)
 
@@ -208,9 +236,94 @@ async def run_policy(config: DeployConfig) -> None:
 
         logger.info("Motors disabled")
 
-    rollout_dict = {
-        "Header": {
-            "Units": {
+        if config.save_plots:
+            logger.info("Saving plots...")
+            import matplotlib.pyplot as plt
+
+            timestamps = [float(t) for t in rollout_dict["data"].keys()]
+            data_values: list[StepDataDict] = list(rollout_dict["data"].values())
+
+            plot_dir = rollout_dir / "plots"
+            plot_dir.mkdir(parents=True, exist_ok=True)
+
+            def save_plot(filename_suffix: str, title: str, data_dict: StepDataKey, labels: dict[str, str]) -> None:
+                plt.figure(figsize=(12, 6))
+                for key, label in labels.items():
+                    y_data = np.array([d[data_dict][key] for d in data_values])
+                    if y_data.ndim == 1:
+                        plt.plot(timestamps, y_data, label=label)
+                    else:
+                        for i in range(y_data.shape[1]):
+                            plt.plot(timestamps, y_data[:, i], label=f"{label}_{i}")
+
+                plt.title(title)
+                plt.xlabel("Time (s)")
+                plt.legend(loc="center left", bbox_to_anchor=(1, 0.5))
+                plt.grid(True)
+                plt.tight_layout(rect=(0, 0, 0.9, 1))
+                plot_path = plot_dir / f"{filename_suffix}_{datetime_name}.png"
+                plt.savefig(plot_path)
+                plt.close()
+                logger.info("Plot saved to %s", plot_path)
+
+            # Plot Observations
+            save_plot("obs_pos", "Observed Joint Positions (rad)", "obs", {"pos_obs": "Position"})
+            save_plot("obs_vel", "Observed Joint Velocities (rad/s)", "obs", {"vel_obs": "Velocity"})
+            save_plot(
+                "obs_imu",
+                "Observed IMU Data",
+                "obs",
+                {"imu_gyro": "Gyro (rad/s)", "projected_gravity": "Gravity (m/s^2)"},
+            )
+            save_plot("obs_phase", "Observed Timestep Phase", "obs", {"timestep_phase": "Phase (cos/sin)"})
+
+            # Plot Commands
+            save_plot(
+                "cmd",
+                "Commands",
+                "cmd",
+                {
+                    "linear_command_x": "Linear X (m/s)",
+                    "linear_command_y": "Linear Y (m/s)",
+                    "angular_command": "Angular (rad/s)",
+                },
+            )
+
+            num_joints = len(actuator_list)
+
+            action_data = np.array([d["action"] for d in data_values])
+            pos_action = action_data[:, :num_joints]
+            vel_action = action_data[:, num_joints:]
+
+            plt.figure(figsize=(12, 6))
+            for i in range(pos_action.shape[1]):
+                plt.plot(timestamps, pos_action[:, i], label=f"Pos Action Joint_{i}")
+            plt.title("Action - Position Targets (rad)")
+            plt.xlabel("Time (s)")
+            plt.legend(loc="center left", bbox_to_anchor=(1, 0.5))
+            plt.grid(True)
+            plt.tight_layout(rect=(0, 0, 0.9, 1))
+            plot_path = plot_dir / f"action_pos_{datetime_name}.png"
+            plt.savefig(plot_path)
+            plt.close()
+            logger.info("Plot saved to %s", plot_path)
+
+            plt.figure(figsize=(12, 6))
+            for i in range(vel_action.shape[1]):
+                plt.plot(timestamps, vel_action[:, i], label=f"Vel Action Joint_{i}")
+            plt.title("Action - Velocity Targets (rad/s)")
+            plt.xlabel("Time (s)")
+            plt.legend(loc="center left", bbox_to_anchor=(1, 0.5))
+            plt.grid(True)
+            plt.tight_layout(rect=(0, 0, 0.9, 1))
+            plot_path = plot_dir / f"action_vel_{datetime_name}.png"
+            plt.savefig(plot_path)
+            plt.close()
+            logger.info("Plot saved to %s", plot_path)
+
+    rollout_dict: RolloutDict = {
+        "header": {
+            "units": {
                 "obs": {
                     "Projected gravity": "Units in m/s^2",
                     "IMU gyro": "Units in rad/s",
@@ -227,9 +340,10 @@ async def run_policy(config: DeployConfig) -> None:
                     "Velocity": "Units in rad/s",
                 },
             },
-            "Config": config.to_dict(),
-            "Date": datetime.now().strftime("%Y-%M-%D %H:%M:%S"),
+            "config": config.to_dict(),
+            "date": datetime.now().strftime("%Y-%M-%D %H:%M:%S"),
         },
+        "data": {},
     }
 
     kos_client = pykos.KOS(ip=config.ip, port=config.port)
@@ -261,11 +375,12 @@ async def run_policy(config: DeployConfig) -> None:
 
             action_array = np.array(action).reshape(-1)
 
-            rollout_dict[time.time() - start_time] = {
-                "obs": {k: v.tolist() for k, v in obs.items()},
-                "cmd": {k: v.tolist() for k, v in cmd.items()},
-                "action": action_array.tolist(),
-            }
+            elapsed_time = time.time() - start_time
+            rollout_dict["data"][f"{elapsed_time:.4f}"] = StepDataDict(
+                obs={k: v.tolist() for k, v in obs.items()},
+                cmd={k: v.tolist() for k, v in cmd.items()},
+                action=action_array.tolist(),
+            )
 
             obs, cmd, _ = await asyncio.gather(
                 get_obs(kos_client),
@@ -277,7 +392,7 @@ async def run_policy(config: DeployConfig) -> None:
                 logger.warning("Loop overran by %f seconds", time.time() - target_time)
             else:
                 logger.debug("Sleeping for %f seconds", target_time - time.time())
-                time.sleep(target_time - time.time())
+                await asyncio.sleep(max(0, target_time - time.time()))
 
             target_time += config.dt
 
@@ -298,6 +413,7 @@ async def main() -> None:
     parser.add_argument("--ip", type=str, default="localhost")
     parser.add_argument("--port", type=int, default=50051)
     parser.add_argument("--log-dir", type=str, default="rollouts")
+    parser.add_argument("--save-plots", action="store_true")
     args = parser.parse_args()
 
     colorlogging.configure(level=logging.DEBUG if args.debug else logging.INFO)
