@@ -619,9 +619,5 @@ if __name__ == "__main__":
             max_action_latency=0.01,
             # Checkpointing parameters.
             save_every_n_seconds=60,
-            valid_every_n_steps=20,
-            valid_first_n_steps=1,
-            render_full_every_n_steps=2,
-            # export_for_inference=True,
         ),
     )
