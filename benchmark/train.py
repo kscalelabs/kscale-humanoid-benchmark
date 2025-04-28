@@ -675,27 +675,31 @@ class HumanoidWalkingTask(ksim.PPOTask[Config], Generic[Config]):
         metadata: dict[str, JointMetadataOutput] | None = None,
     ) -> ksim.Actuators:
         assert metadata is not None, "Metadata is required"
-        return ksim.MITPositionActuators(
+        return ksim.MITPositionVelocityActuators(
             physics_model=physics_model,
             joint_name_to_metadata=metadata,
+            pos_action_noise=0.05,
+            pos_action_noise_type="gaussian",
+            vel_action_noise=0.1,
+            vel_action_noise_type="gaussian",
         )
 
     def get_physics_randomizers(self, physics_model: ksim.PhysicsModel) -> list[ksim.PhysicsRandomizer]:
         return [
             ksim.StaticFrictionRandomizer(),
-            ksim.FloorFrictionRandomizer.from_geom_name(physics_model, "floor", scale_lower=0.95, scale_upper=1.05),
+            ksim.FloorFrictionRandomizer.from_geom_name(physics_model, "floor", scale_lower=0.8, scale_upper=1.2),
             ksim.ArmatureRandomizer(),
             ksim.MassMultiplicationRandomizer.from_body_name(physics_model, "Torso_Side_Right"),
             ksim.JointDampingRandomizer(),
-            ksim.JointZeroPositionRandomizer(),
+            ksim.JointZeroPositionRandomizer(scale_lower=-0.03, scale_upper=0.03),
         ]
 
     def get_events(self, physics_model: ksim.PhysicsModel) -> list[ksim.Event]:
         return [
             ksim.PushEvent(
-                x_force=1.0,
-                y_force=1.0,
-                z_force=0.0,
+                x_force=1.5,
+                y_force=1.5,
+                z_force=0.1,
                 x_angular_force=0.1,
                 y_angular_force=0.1,
                 z_angular_force=0.3,
@@ -712,8 +716,8 @@ class HumanoidWalkingTask(ksim.PPOTask[Config], Generic[Config]):
     def get_observations(self, physics_model: ksim.PhysicsModel) -> list[ksim.Observation]:
         return [
             TimestepPhaseObservation(stand_still_threshold=self.config.stand_still_threshold),
-            ksim.JointPositionObservation(),
-            ksim.JointVelocityObservation(),
+            ksim.JointPositionObservation(noise=0.05),
+            ksim.JointVelocityObservation(noise=0.1),
             ksim.ActuatorForceObservation(),
             ksim.CenterOfMassInertiaObservation(),
             ksim.CenterOfMassVelocityObservation(),
@@ -727,6 +731,7 @@ class HumanoidWalkingTask(ksim.PPOTask[Config], Generic[Config]):
                 physics_model=physics_model,
                 framequat_name="base_link_quat",
                 lag_range=(0.0, 0.5),
+                noise=0.1,
             ),
             ksim.ActuatorAccelerationObservation(),
             ksim.BasePositionObservation(),
@@ -735,7 +740,7 @@ class HumanoidWalkingTask(ksim.PPOTask[Config], Generic[Config]):
             ksim.BaseAngularVelocityObservation(),
             ksim.CenterOfMassVelocityObservation(),
             ksim.SensorObservation.create(physics_model=physics_model, sensor_name="imu_acc"),
-            ksim.SensorObservation.create(physics_model=physics_model, sensor_name="imu_gyro"),
+            ksim.SensorObservation.create(physics_model=physics_model, sensor_name="imu_gyro", noise=0.2),
             ksim.SensorObservation.create(physics_model=physics_model, sensor_name="left_foot_force", noise=0.0),
             ksim.SensorObservation.create(physics_model=physics_model, sensor_name="right_foot_force", noise=0.0),
             ksim.SensorObservation.create(physics_model=physics_model, sensor_name="local_linvel_origin", noise=0.0),
