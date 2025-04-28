@@ -4,17 +4,18 @@ import argparse
 import asyncio
 import json
 import logging
+import os
 import time
 from dataclasses import dataclass, field
+from datetime import datetime
 from typing import Literal
-import os
 
 import colorlogging
 import numpy as np
 import pykos
 import tensorflow as tf
 from xax.nn.geom import rotate_vector_by_quat
-from datetime import datetime
+
 logger = logging.getLogger(__name__)
 
 RunMode = Literal["real", "sim"]
@@ -128,8 +129,8 @@ async def run_policy(config: DeployConfig) -> None:
                 obs["timestep_phase"],
                 obs["pos_obs"],
                 obs["vel_obs"],
-                obs["imu_gyro"],
                 obs["projected_gravity"],
+                obs["imu_gyro"],
                 cmd["linear_command_x"],
                 cmd["linear_command_y"],
                 cmd["angular_command"],
@@ -142,7 +143,7 @@ async def run_policy(config: DeployConfig) -> None:
             raise NotImplementedError
         else:
             return {
-                "linear_command_x": np.array([0.0]),
+                "linear_command_x": np.array([0.5]),
                 "linear_command_y": np.array([0.0]),
                 "angular_command": np.array([0.0]),
             }
@@ -151,8 +152,8 @@ async def run_policy(config: DeployConfig) -> None:
         raw_position = raw_action[: len(actuator_list)]
         raw_velocity = raw_action[len(actuator_list) :]
 
-        position_target = np.rad2deg(raw_position)
-        velocity_target = np.rad2deg(raw_velocity)
+        position_target = np.rad2deg(raw_position) * config.action_scale
+        velocity_target = np.rad2deg(raw_velocity) * config.action_scale
 
         actuator_commands: list[pykos.services.actuator.ActuatorCommand] = [
             {
@@ -275,6 +276,7 @@ async def run_policy(config: DeployConfig) -> None:
             if time.time() > target_time:
                 logger.warning("Loop overran by %f seconds", time.time() - target_time)
             else:
+                logger.debug("Sleeping for %f seconds", target_time - time.time())
                 time.sleep(target_time - time.time())
 
             target_time += config.dt
