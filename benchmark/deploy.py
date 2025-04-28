@@ -86,7 +86,7 @@ class DeployConfig:
         return self.__dict__
 
 
-StepDataKey: TypeAlias = Literal("action", "obs", "cmd")
+StepDataDictableKey: TypeAlias = Literal["obs", "cmd"]
 
 
 class StepDataDict(TypedDict):
@@ -130,7 +130,7 @@ async def run_policy(config: DeployConfig) -> None:
         # IMU observations
         imu_gyro = np.array([imu.gyro_x, imu.gyro_y, imu.gyro_z])
         projected_gravity = rotate_vector_by_quat(
-            np.array([0, 0, -9.81]), np.array([quaternion.w, quaternion.x, quaternion.y, quaternion.z]), inverse=True
+            np.array([0, 0, -9.81]), np.array([quaternion.w, quaternion.x, quaternion.y, quaternion.z]), inverse=True  # type: ignore[arg-type]
         )
 
         # Timestep phase
@@ -246,7 +246,9 @@ async def run_policy(config: DeployConfig) -> None:
             plot_dir = rollout_dir / "plots"
             plot_dir.mkdir(parents=True, exist_ok=True)
 
-            def save_plot(filename_suffix: str, title: str, data_dict: StepDataKey, labels: dict[str, str]) -> None:
+            def save_plot(
+                filename_suffix: str, title: str, data_dict: StepDataDictableKey, labels: dict[str, str]
+            ) -> None:
                 plt.figure(figsize=(12, 6))
                 for key, label in labels.items():
                     y_data = np.array([d[data_dict][key] for d in data_values])
