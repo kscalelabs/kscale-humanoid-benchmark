@@ -85,7 +85,6 @@ home_position = {
 
 @dataclass
 class DeployConfig:
-    model_path: str = field(default="", metadata={"help": "Path to the model to deploy"})
     action_scale: float = field(default=0.1, metadata={"help": "Scale of the action outputs"})
     run_mode: RunMode = field(default="sim", metadata={"help": "Run mode"})
     joystick_enabled: bool = field(default=False, metadata={"help": "Whether to use joystick"})
@@ -372,14 +371,12 @@ async def run_policy(config: DeployConfig) -> None:
 
     kos_client = pykos.KOS(ip=config.ip, port=config.port)
 
-    model = tf.saved_model.load(config.model_path)
 
     # Warm up model
     logger.info("Warming up model...")
     obs = await get_obs(kos_client)
     cmd = await get_command(config.joystick_enabled)
     carry = np.zeros(config.rnn_carry_shape)[None, :]
-    _ = model.infer(obs_to_vec(obs, cmd), carry)
 
     logger.info("Starting preflight...")
     await preflight()
@@ -395,9 +392,8 @@ async def run_policy(config: DeployConfig) -> None:
 
     try:
         while time.time() - start_time < config.episode_length:
-            action, carry = model.infer(obs_to_vec(obs, cmd), carry)
 
-            # action = np.deg2rad(np.array([home_position[ac.actuator_id] for ac in actuator_list]))
+            action = np.deg2rad(np.array([home_position[ac.actuator_id] for ac in actuator_list]))
 
             action_array = np.array(action).reshape(-1)
 
@@ -430,7 +426,6 @@ async def run_policy(config: DeployConfig) -> None:
 
 async def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("model_path", type=str)
     parser.add_argument("--action-scale", type=float, default=0.1)
     parser.add_argument("--run-mode", type=str, default="sim")
     parser.add_argument("--joystick-enabled", action="store_true")
