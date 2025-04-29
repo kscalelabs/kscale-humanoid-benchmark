@@ -35,7 +35,7 @@ NUM_ACTOR_INPUTS = OBS_SIZE + CMD_SIZE
 NUM_CRITIC_INPUTS = NUM_ACTOR_INPUTS + 2 + 6 + 3 + 4 + 3 + 3 + 20 + 1
 
 # Position targets
-NUM_OUTPUTS = NUM_JOINTS * 1
+NUM_OUTPUTS = NUM_JOINTS * 2
 
 BIASES: list[float] = [
     0.0,  # dof_right_shoulder_pitch_03
@@ -58,6 +58,27 @@ BIASES: list[float] = [
     0.0,  # dof_left_hip_yaw_03
     math.radians(50.0),  # dof_left_knee_04
     math.radians(-25.0),  # dof_left_ankle_02
+    # Joint Velocities
+    0.0,  # dof_right_shoulder_pitch_03
+    0.0,  # dof_right_shoulder_roll_03
+    0.0,  # dof_right_shoulder_yaw_02
+    0.0,  # dof_right_elbow_02
+    0.0,  # dof_right_wrist_00
+    0.0,  # dof_left_shoulder_pitch_03
+    0.0,  # dof_left_shoulder_roll_03
+    0.0,  # dof_left_shoulder_yaw_02
+    0.0,  # dof_left_elbow_02
+    0.0,  # dof_left_wrist_00
+    0.0,  # dof_right_hip_pitch_04
+    0.0,  # dof_right_hip_roll_03
+    0.0,  # dof_right_hip_yaw_03
+    0.0,  # dof_right_knee_04
+    0.0,  # dof_right_ankle_02
+    0.0,  # dof_left_hip_pitch_04
+    0.0,  # dof_left_hip_roll_03
+    0.0,  # dof_left_hip_yaw_03
+    0.0,  # dof_left_knee_04
+    0.0,  # dof_left_ankle_02
 ]
 
 
@@ -417,7 +438,7 @@ class Actor(eqx.Module):
         depth: int,
     ) -> None:
         num_inputs = NUM_ACTOR_INPUTS
-        num_outputs = NUM_JOINTS
+        num_outputs = NUM_OUTPUTS
 
         # Project input to hidden size
         key, input_proj_key = jax.random.split(key)
@@ -463,10 +484,10 @@ class Actor(eqx.Module):
         out_n = self.output_proj(x_n)
 
         # Reshape the output to be a mixture of gaussians.
-        slice_len = NUM_JOINTS * self.num_mixtures
-        mean_nm = out_n[..., :slice_len].reshape(NUM_JOINTS, self.num_mixtures)
-        std_nm = out_n[..., slice_len : slice_len * 2].reshape(NUM_JOINTS, self.num_mixtures)
-        logits_nm = out_n[..., slice_len * 2 :].reshape(NUM_JOINTS, self.num_mixtures)
+        slice_len = self.num_outputs * self.num_mixtures
+        mean_nm = out_n[..., :slice_len].reshape(self.num_outputs, self.num_mixtures)
+        std_nm = out_n[..., slice_len : slice_len * 2].reshape(self.num_outputs, self.num_mixtures)
+        logits_nm = out_n[..., slice_len * 2 :].reshape(self.num_outputs, self.num_mixtures)
 
         # Add biases to the mean.
         mean_nm = mean_nm + jnp.array(BIASES)[:, None]
@@ -795,9 +816,11 @@ class HumanoidWalkingTask(ksim.PPOTask[Config], Generic[Config]):
                 scale=0.5,
                 stand_still_threshold=self.config.stand_still_threshold,
             ),
+            ksim.AngularVelocityPenalty(index="z", scale=-0.1),
             # Normalization penalties (grow with curriculum).
             ksim.ActionSmoothnessPenalty(scale=-0.01),
             ksim.ActuatorForcePenalty(scale=-0.001),
+            ksim.JointVelocityPenalty(scale=-0.005),
             ksim.BaseJerkZPenalty(ctrl_dt=ctrl_dt, scale=-0.001),
             ksim.LinearVelocityPenalty(index="z", scale=-0.001),
             ksim.AngularVelocityPenalty(index="z", scale=-0.001),
