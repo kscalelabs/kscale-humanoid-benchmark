@@ -98,9 +98,6 @@ class DeployConfig:
     # Policy parameters
     gait: float = field(default=1.25, metadata={"help": "Gait of the policy"})
     dt: float = field(default=0.02, metadata={"help": "Timestep of the policy"})
-    rnn_carry_shape: tuple[int, int] = field(
-        default=(5, 128), metadata={"help": "Shape of the RNN carry. (num_layers, hidden_size)"}
-    )
 
     def __repr__(self) -> str:
         return "DeployConfig(\n" + "\n".join([f"  {k}={v}" for k, v in self.__dict__.items()]) + "\n)"
@@ -376,7 +373,6 @@ async def run_policy(config: DeployConfig) -> None:
     logger.info("Warming up model...")
     obs = await get_obs(kos_client)
     cmd = await get_command(config.joystick_enabled)
-    carry = np.zeros(config.rnn_carry_shape)[None, :]
 
     logger.info("Starting preflight...")
     await preflight()
