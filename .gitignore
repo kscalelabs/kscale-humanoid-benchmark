@@ -14,6 +14,9 @@ __pycache__/
 # Databases
 *.db
 
+# Logs
+rollouts/
+
 # Build artifacts
 build/
 dist/
