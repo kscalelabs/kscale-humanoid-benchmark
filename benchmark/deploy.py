@@ -178,15 +178,9 @@ async def run_policy(config: DeployConfig) -> None:
         # Modify this as needed to match your model's input format
         return np.concatenate(
             [
-                obs["timestep_phase"],
                 obs["pos_obs"],
                 obs["vel_obs"],
                 obs["projected_gravity"],
-                obs["imu_gyro"],
-                cmd["linear_command_x"],
-                cmd["linear_command_y"],
-                cmd["angular_command"],
-                np.array([config.gait]),
             ]
         )[None, :]
 
@@ -202,16 +196,13 @@ async def run_policy(config: DeployConfig) -> None:
 
     async def send_action(raw_action: np.ndarray, kos_client: pykos.KOS) -> None:
         raw_position = raw_action[: len(actuator_list)]
-        raw_velocity = raw_action[len(actuator_list) :]
 
         position_target = np.rad2deg(raw_position) * config.action_scale
-        velocity_target = np.rad2deg(raw_velocity) * config.action_scale
 
         actuator_commands: list[pykos.services.actuator.ActuatorCommand] = [
             {
                 "actuator_id": ac.actuator_id,
                 "position": position_target[ac.nn_id],
-                "velocity": velocity_target[ac.nn_id],
             }
             for ac in actuator_list
         ]
@@ -339,7 +330,6 @@ async def run_policy(config: DeployConfig) -> None:
 
             action_data = np.array([d["action"] for d in data_values])
             pos_action = action_data[:, :num_joints]
-            vel_action = action_data[:, num_joints:]
 
             plt.figure(figsize=(12, 6))
             for i in range(pos_action.shape[1]):
@@ -350,19 +340,6 @@ async def run_policy(config: DeployConfig) -> None:
             plt.grid(True)
             plt.tight_layout(rect=(0, 0, 0.9, 1))
             plot_path = plot_dir / f"action_pos_{datetime_name}.png"
-            plt.savefig(plot_path)
-            plt.close()
-            logger.info("Plot saved to %s", plot_path)
-
-            plt.figure(figsize=(12, 6))
-            for i in range(vel_action.shape[1]):
-                plt.plot(timestamps, vel_action[:, i], label=f"Vel Action Joint_{i}")
-            plt.title("Action - Velocity Targets (rad/s)")
-            plt.xlabel("Time (s)")
-            plt.legend(loc="center left", bbox_to_anchor=(1, 0.5))
-            plt.grid(True)
-            plt.tight_layout(rect=(0, 0, 0.9, 1))
-            plot_path = plot_dir / f"action_vel_{datetime_name}.png"
             plt.savefig(plot_path)
             plt.close()
             logger.info("Plot saved to %s", plot_path)
@@ -383,7 +360,6 @@ async def run_policy(config: DeployConfig) -> None:
                 },
                 "action": {
                     "Position": "Units in rad",
-                    "Velocity": "Units in rad/s",
                 },
             },
             "config": config.to_dict(),
