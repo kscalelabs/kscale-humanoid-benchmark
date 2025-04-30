@@ -54,6 +54,13 @@ BIASES: list[float] = [
     math.radians(-ankle_pos),  # dof_left_ankle_02
 ]
 
+MAX_TORQUE = {
+    "00": 11.0,
+    "02": 13.0,
+    "03": 48.0,
+    "04": 96.0,
+}
+
 
 @attrs.define
 class BentArmPenalty(ksim.Reward):
@@ -468,6 +475,32 @@ class HumanoidWalkingTask(ksim.PPOTask[Config], Generic[Config]):
         return ksim.MITPositionActuators(
             physics_model=physics_model,
             joint_name_to_metadata=metadata,
+            ctrl_clip=[
+                # right arm
+                MAX_TORQUE["03"],  # dof_right_shoulder_pitch_03
+                MAX_TORQUE["03"],  # dof_right_shoulder_roll_03
+                MAX_TORQUE["02"],  # dof_right_shoulder_yaw_02
+                MAX_TORQUE["02"],  # dof_right_elbow_02
+                MAX_TORQUE["00"],  # dof_right_wrist_00
+                # left arm
+                MAX_TORQUE["03"],  # dof_left_shoulder_pitch_03
+                MAX_TORQUE["03"],  # dof_left_shoulder_roll_03
+                MAX_TORQUE["02"],  # dof_left_shoulder_yaw_02
+                MAX_TORQUE["02"],  # dof_left_elbow_02
+                MAX_TORQUE["00"],  # dof_left_wrist_00
+                # right leg
+                MAX_TORQUE["04"],  # dof_right_hip_pitch_04
+                MAX_TORQUE["03"],  # dof_right_hip_roll_03
+                MAX_TORQUE["03"],  # dof_right_hip_yaw_03
+                MAX_TORQUE["04"],  # dof_right_knee_04
+                MAX_TORQUE["03"],  # dof_right_ankle_02
+                # left leg
+                MAX_TORQUE["04"],  # dof_left_hip_pitch_04
+                MAX_TORQUE["03"],  # dof_left_hip_roll_03
+                MAX_TORQUE["03"],  # dof_left_hip_yaw_03
+                MAX_TORQUE["04"],  # dof_left_knee_04
+                MAX_TORQUE["03"],  # dof_left_ankle_02
+            ]
         )
 
     def get_physics_randomizers(self, physics_model: ksim.PhysicsModel) -> list[ksim.PhysicsRandomizer]:
