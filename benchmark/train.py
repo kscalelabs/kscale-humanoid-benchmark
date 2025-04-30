@@ -3,8 +3,7 @@
 import asyncio
 import math
 from dataclasses import dataclass
-from pathlib import Path
-from typing import Callable, Generic, Self, TypeVar
+from typing import Generic, Self, TypeVar
 
 import attrs
 import distrax
@@ -19,12 +18,10 @@ import optax
 import xax
 from jaxtyping import Array, PRNGKeyArray
 from kscale.web.gen.api import JointMetadataOutput
-from xax.nn.export import export as xax_export
 
 NUM_JOINTS = 20
 NUM_ACTOR_INPUTS = 43
 NUM_CRITIC_INPUTS = 444
-
 
 BIASES: list[float] = [
     0.0,  # dof_right_shoulder_pitch_03
@@ -282,12 +279,6 @@ class HumanoidWalkingTaskConfig(ksim.PPOConfig):
     num_mixtures: int = xax.field(
         value=5,
         help="The number of mixtures for the actor.",
-    )
-
-    # Checkpoint parameters.
-    export_for_inference: bool = xax.field(
-        value=False,
-        help="Whether to export the model for inference.",
     )
 
     # Optimizer parameters.
@@ -603,60 +594,19 @@ class HumanoidWalkingTask(ksim.PPOTask[Config], Generic[Config]):
 
         action_j = action_dist_j.mode() if argmax else action_dist_j.sample(seed=rng)
 
+        # Clamps the actions to the range of the actuator, to prevent
+        # requesting an action that is outside the range of the actuator.
+        # This will behave poorly near joint limits unless the KP values
+        # are sufficiently high.
+        action_min_j = jnp.array(physics_model.jnt_range[1:, 0])
+        action_max_j = jnp.array(physics_model.jnt_range[1:, 1])
+        action_j = jnp.clip(action_j, action_min_j, action_max_j)
+
         return ksim.Action(
             action=action_j,
             carry=(actor_carry, critic_carry_in),
             aux_outputs=None,
         )
-
-    def make_export_model(self, model: Model) -> Callable:
-        """Makes a callable inference function that directly takes a flattened input vector and returns an action.
-
-        Returns:
-            A tuple containing the inference function and the size of the input vector.
-        """
-
-        def model_fn(obs: Array, carry: Array) -> tuple[Array, Array]:
-            dist, carry = model.actor.forward(obs, carry)
-            return dist.mode(), carry
-
-        def batched_model_fn(obs: Array, carry: Array) -> tuple[Array, Array]:
-            return jax.vmap(model_fn)(obs, carry)
-
-        return batched_model_fn
-
-    def on_after_checkpoint_save(self, ckpt_path: Path, state: xax.State | None) -> xax.State | None:
-        if not self.config.export_for_inference:
-            return state
-
-        model: Model = self.load_ckpt(ckpt_path, part="model")[0]
-
-        model_fn = self.make_export_model(model)
-
-        input_shapes = [
-            (NUM_ACTOR_INPUTS,),
-            (
-                self.config.depth,
-                self.config.hidden_size,
-            ),
-        ]
-
-        if state is None:
-            tf_path = ckpt_path.parent / "tf_model"
-        else:
-            tf_path = (
-                ckpt_path.parent / "tf_model"
-                if self.config.only_save_most_recent
-                else ckpt_path.parent / f"tf_model_{state.num_steps}"
-            )
-
-        xax_export(
-            model_fn,
-            input_shapes,
-            tf_path,
-        )
-
-        return state
 
 
 if __name__ == "__main__":
@@ -676,6 +626,5 @@ if __name__ == "__main__":
             max_action_latency=0.01,
             # Checkpointing parameters.
             save_every_n_seconds=60,
-            export_for_inference=True,
         ),
     )

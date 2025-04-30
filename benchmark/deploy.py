@@ -428,6 +428,7 @@ async def run_policy(config: DeployConfig) -> None:
 
 async def main() -> None:
     parser = argparse.ArgumentParser()
+    # TODO: Need to convert from a checkpoint to a saved model.
     parser.add_argument("model_path", type=str)
     parser.add_argument("--action-scale", type=float, default=0.1)
     parser.add_argument("--run-mode", type=str, default="sim")
