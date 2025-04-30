@@ -99,6 +99,35 @@ class BentArmPenalty(ksim.Reward):
         )
 
 
+@attrs.define
+class JointDeviationPenalty(ksim.Reward):
+    joint_indices: tuple[int, ...] = attrs.field()
+    joint_targets: tuple[float, ...] = attrs.field()
+
+    def get_reward(self, trajectory: ksim.Trajectory) -> Array:
+        qpos = trajectory.qpos[..., self.joint_indices]
+        qpos_targets = jnp.array(self.joint_targets)
+        qpos_diff = qpos - qpos_targets
+        return xax.get_norm(qpos_diff, "l2").mean(axis=-1)
+
+    @classmethod
+    def create(
+        cls,
+        model: ksim.PhysicsModel,
+        joint_targets: tuple[float, ...],
+        scale: float,
+        scale_by_curriculum: bool = False,
+    ) -> Self:
+        joint_indices = list(range(7, 7 + len(joint_targets)))
+
+        return cls(
+            joint_indices=tuple(joint_indices),
+            joint_targets=joint_targets,
+            scale=scale,
+            scale_by_curriculum=scale_by_curriculum,
+        )
+
+
 class Actor(eqx.Module):
     """Actor for the walking task."""
 
