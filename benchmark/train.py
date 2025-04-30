@@ -536,7 +536,7 @@ class HumanoidWalkingTask(ksim.PPOTask[Config], Generic[Config]):
         return [
             # Standard rewards.
             ksim.StayAliveReward(scale=1.0),
-            ksim.NaiveForwardReward(clip_min=0.0, clip_max=0.5, scale=1.0),
+            # ksim.NaiveForwardReward(clip_min=0.0, clip_max=0.5, scale=1.0),
             ksim.UprightReward(index="x", inverted=False, scale=0.1),
             # Normalization penalties (grow with curriculum).
             ksim.ActionSmoothnessPenalty(scale=-0.01),
@@ -544,8 +544,9 @@ class HumanoidWalkingTask(ksim.PPOTask[Config], Generic[Config]):
             ksim.BaseJerkZPenalty(ctrl_dt=ctrl_dt, scale=-0.001),
             ksim.LinearVelocityPenalty(index="z", scale=-0.001),
             ksim.AngularVelocityPenalty(index="z", scale=-0.001),
+            JointDeviationPenalty.create(physics_model, joint_targets=tuple(BIASES), scale=-0.1),
             # Bespoke rewards.
-            BentArmPenalty.create(physics_model, scale=-0.1),
+            BentArmPenalty.create(physics_model, scale=-0.5),
         ]
 
     def get_terminations(self, physics_model: ksim.PhysicsModel) -> list[ksim.Termination]:
@@ -781,5 +782,6 @@ if __name__ == "__main__":
             # Checkpointing parameters.
             save_every_n_seconds=60,
             export_for_inference=True,
+            only_save_most_recent=False,
         ),
     )
