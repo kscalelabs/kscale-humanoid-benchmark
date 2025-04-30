@@ -25,28 +25,33 @@ NUM_JOINTS = 20
 NUM_ACTOR_INPUTS = 43
 NUM_CRITIC_INPUTS = 444
 
+shoulder_roll_pos = 0
+elbow_pos = 90
+hip_pitch_pos = 13.6
+knee_pos = 29.25
+ankle_pos = 13.5
 
 BIASES: list[float] = [
     0.0,  # dof_right_shoulder_pitch_03
-    math.radians(-10.0),  # dof_right_shoulder_roll_03
+    math.radians(-shoulder_roll_pos),  # dof_right_shoulder_roll_03
     0.0,  # dof_right_shoulder_yaw_02
-    math.radians(90.0),  # dof_right_elbow_02
+    math.radians(elbow_pos),  # dof_right_elbow_02
     0.0,  # dof_right_wrist_00
     0.0,  # dof_left_shoulder_pitch_03
-    math.radians(10.0),  # dof_left_shoulder_roll_03
+    math.radians(shoulder_roll_pos),  # dof_left_shoulder_roll_03
     0.0,  # dof_left_shoulder_yaw_02
-    math.radians(-90.0),  # dof_left_elbow_02
+    math.radians(-elbow_pos),  # dof_left_elbow_02
     0.0,  # dof_left_wrist_00
-    math.radians(-25.0),  # dof_right_hip_pitch_04
+    math.radians(-hip_pitch_pos),  # dof_right_hip_pitch_04
     0.0,  # dof_right_hip_roll_03
     0.0,  # dof_right_hip_yaw_03
-    math.radians(-50.0),  # dof_right_knee_04
-    math.radians(25.0),  # dof_right_ankle_02
-    math.radians(25.0),  # dof_left_hip_pitch_04
+    math.radians(-knee_pos),  # dof_right_knee_04
+    math.radians(ankle_pos),  # dof_right_ankle_02
+    math.radians(hip_pitch_pos),  # dof_left_hip_pitch_04
     0.0,  # dof_left_hip_roll_03
     0.0,  # dof_left_hip_yaw_03
-    math.radians(50.0),  # dof_left_knee_04
-    math.radians(-25.0),  # dof_left_ankle_02
+    math.radians(knee_pos),  # dof_left_knee_04
+    math.radians(-ankle_pos),  # dof_left_ankle_02
 ]
 
 
@@ -353,7 +358,77 @@ class HumanoidWalkingTask(ksim.PPOTask[Config], Generic[Config]):
         metadata = asyncio.run(ksim.get_mujoco_model_metadata("kbot-v2-feet"))
         if metadata.joint_name_to_metadata is None:
             raise ValueError("Joint metadata is not available")
-        return metadata.joint_name_to_metadata
+        new_metadata = metadata.joint_name_to_metadata.copy()
+
+        # Right arm
+        new_metadata["dof_right_shoulder_pitch_03"] = JointMetadataOutput(
+            actuator_type="robstride_03", id=21, kp="100.0", kd="4.0"
+        )
+        new_metadata["dof_right_shoulder_roll_03"] = JointMetadataOutput(
+            actuator_type="robstride_03", id=22, kp="100.0", kd="4.0"
+        )
+        new_metadata["dof_right_shoulder_yaw_02"] = JointMetadataOutput(
+            actuator_type="robstride_02", id=23, kp="40.0", kd="2.0"
+        )
+        new_metadata["dof_right_elbow_02"] = JointMetadataOutput(
+            actuator_type="robstride_02", id=24, kp="40.0", kd="2.0"
+        )
+        new_metadata["dof_right_wrist_00"] = JointMetadataOutput(
+            actuator_type="robstride_00", id=25, kp="20.0", kd="2.0"
+        )
+
+        # Left arm
+        new_metadata["dof_left_shoulder_pitch_03"] = JointMetadataOutput(
+            actuator_type="robstride_03", id=11, kp="100.0", kd="4.0"
+        )
+        new_metadata["dof_left_shoulder_roll_03"] = JointMetadataOutput(
+            actuator_type="robstride_03", id=12, kp="100.0", kd="4.0"
+        )
+        new_metadata["dof_left_shoulder_yaw_02"] = JointMetadataOutput(
+            actuator_type="robstride_02", id=13, kp="40.0", kd="2.0"
+        )
+        new_metadata["dof_left_elbow_02"] = JointMetadataOutput(
+            actuator_type="robstride_02", id=14, kp="40.0", kd="2.0"
+        )
+        new_metadata["dof_left_wrist_00"] = JointMetadataOutput(
+            actuator_type="robstride_00", id=15, kp="20.0", kd="2.0"
+        )
+
+        # Right leg
+        new_metadata["dof_right_hip_pitch_04"] = JointMetadataOutput(
+            actuator_type="robstride_04", id=41, kp="150.0", kd="8.0"
+        )
+        new_metadata["dof_right_hip_roll_03"] = JointMetadataOutput(
+            actuator_type="robstride_03", id=42, kp="150.0", kd="8.0"
+        )
+        new_metadata["dof_right_hip_yaw_03"] = JointMetadataOutput(
+            actuator_type="robstride_03", id=43, kp="100.0", kd="4.0"
+        )
+        new_metadata["dof_right_knee_04"] = JointMetadataOutput(
+            actuator_type="robstride_04", id=44, kp="150.0", kd="8.0"
+        )
+        new_metadata["dof_right_ankle_02"] = JointMetadataOutput(
+            actuator_type="robstride_03", id=45, kp="40.0", kd="8.0"
+        )
+
+        # Left leg
+        new_metadata["dof_left_hip_pitch_04"] = JointMetadataOutput(
+            actuator_type="robstride_04", id=31, kp="150.0", kd="8.0"
+        )
+        new_metadata["dof_left_hip_roll_03"] = JointMetadataOutput(
+            actuator_type="robstride_03", id=32, kp="150.0", kd="8.0"
+        )
+        new_metadata["dof_left_hip_yaw_03"] = JointMetadataOutput(
+            actuator_type="robstride_03", id=33, kp="100.0", kd="4.0"
+        )
+        new_metadata["dof_left_knee_04"] = JointMetadataOutput(
+            actuator_type="robstride_04", id=34, kp="150.0", kd="8.0"
+        )
+        new_metadata["dof_left_ankle_02"] = JointMetadataOutput(
+            actuator_type="robstride_03", id=35, kp="40.0", kd="8.0"
+        )
+
+        return new_metadata
 
     def get_actuators(
         self,
