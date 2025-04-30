@@ -516,13 +516,13 @@ class HumanoidWalkingTask(ksim.PPOTask[Config], Generic[Config]):
     def get_events(self, physics_model: ksim.PhysicsModel) -> list[ksim.Event]:
         return [
             ksim.PushEvent(
-                x_force=1.0,
-                y_force=1.0,
-                z_force=0.0,
-                x_angular_force=0.1,
-                y_angular_force=0.1,
-                z_angular_force=0.3,
-                interval_range=(0.25, 0.75),
+                x_force=1.5,
+                y_force=1.5,
+                z_force=0.1,
+                x_angular_force=1.5,
+                y_angular_force=1.5,
+                z_angular_force=1.5,
+                interval_range=(1.0, 4.0),
             ),
         ]
 
