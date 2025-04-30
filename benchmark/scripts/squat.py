@@ -31,9 +31,9 @@ class Actuator:
     max_torque: float
     joint_name: str
 
-hip_pitch_kp = 150.0
-knee_kp = 190.0
-ankle_kp = 200.0
+hip_pitch_kp = 25.0
+knee_kp = 25.0
+ankle_kp = 20.0
 
 actuator_list: list[Actuator] = [
     # Right arm (nn_id 0-4)
@@ -65,7 +65,7 @@ actuator_list: list[Actuator] = [
 shoulder_roll_pos = 10
 elbow_pos = 90
 
-hip_pitch_pos = 40
+hip_pitch_pos = 25
 knee_pos = 50
 ankle_pos = 25
 
@@ -130,6 +130,7 @@ class StepDataDict(TypedDict):
     action: list[float]
     obs: dict[str, list[float]]
     cmd: dict[str, list[float]]
+    torque: list[float]
 
 
 class HeaderDict(TypedDict):
@@ -357,6 +358,23 @@ async def run_policy(config: DeployConfig) -> None:
             plt.close()
             logger.info("Plot saved to %s", plot_path)
 
+            # Plot torque values
+            torque_data = np.array([d["torque"] for d in data_values])
+            plt.figure(figsize=(12, 6))
+            for i in range(torque_data.shape[1]):
+                actuator_id = actuator_list[i].actuator_id
+                joint_name = actuator_list[i].joint_name
+                plt.plot(timestamps, torque_data[:, i], label=f"{joint_name} (ID: {actuator_id})")
+            plt.title("Actuator Torques (Nm)")
+            plt.xlabel("Time (s)")
+            plt.legend(loc="center left", bbox_to_anchor=(1, 0.5))
+            plt.grid(True)
+            plt.tight_layout(rect=(0, 0, 0.9, 1))
+            plot_path = plot_dir / f"torque_{datetime_name}.png"
+            plt.savefig(plot_path)
+            plt.close()
+            logger.info("Torque plot saved to %s", plot_path)
+
     rollout_dict: RolloutDict = {
         "header": {
             "units": {
@@ -373,6 +391,9 @@ async def run_policy(config: DeployConfig) -> None:
                 },
                 "action": {
                     "Position": "Units in rad",
+                },
+                "torque": {
+                    "Torque": "Units in Nm",
                 },
             },
             "config": config.to_dict(),
@@ -409,12 +430,28 @@ async def run_policy(config: DeployConfig) -> None:
             action = np.deg2rad(np.array([home_position[ac.actuator_id] for ac in actuator_list]))
 
             action_array = np.array(action).reshape(-1)
+            
+            actuator_states = await kos_client.actuator.get_actuators_state([ac.actuator_id for ac in actuator_list])
+            sorted_states = sorted(actuator_states.states, key=lambda s: s.actuator_id)
+            
+            logger.info("\n====== TORQUE DASHBOARD ======")
+            logger.info("ID    | Joint Name                     | Position      | Torque            ")
+            logger.info("----------------------------------------------------------------------")
+            for state in sorted_states:
+                joint_name = [ac.joint_name for ac in actuator_list if ac.actuator_id == state.actuator_id][0]
+                max_torque = [ac.max_torque for ac in actuator_list if ac.actuator_id == state.actuator_id][0]
+                log_line = f"{state.actuator_id:<5} | {joint_name:<30} | {state.position:<12.4f} | {state.torque:<10.4f}"
+                if abs(state.torque) > max_torque:
+                    logger.error(log_line)
+                else:
+                    logger.info(log_line)
 
             elapsed_time = time.time() - start_time
             rollout_dict["data"][f"{elapsed_time:.4f}"] = StepDataDict(
                 obs={k: v.tolist() for k, v in obs.items()},
                 cmd={k: v.tolist() for k, v in cmd.items()},
                 action=action_array.tolist(),
+                torque=[state.torque for state in sorted(actuator_states.states, key=lambda s: s.actuator_id)],
             )
 
             obs, cmd, _ = await asyncio.gather(
