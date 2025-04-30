@@ -22,3 +22,4 @@ build/
 dist/
 *.so
 out*/
+**/run_*/
