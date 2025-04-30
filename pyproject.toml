@@ -43,6 +43,7 @@ module = [
     "bvhio.*",
     "glm.*",
     "imageio.*",
+    "tensorflow.*"
 ]
 ignore_missing_imports = true
 
