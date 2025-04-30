@@ -34,52 +34,63 @@ class Actuator:
 
 actuator_list: list[Actuator] = [
     # Right arm (nn_id 0-4)
-    Actuator(actuator_id=21, nn_id=0, kp=40.0, kd=4.0, max_torque=40.0, joint_name="dof_right_shoulder_pitch_03"),
-    Actuator(actuator_id=22, nn_id=1, kp=40.0, kd=4.0, max_torque=40.0, joint_name="dof_right_shoulder_roll_03"),
-    Actuator(actuator_id=23, nn_id=2, kp=30.0, kd=1.0, max_torque=14.0, joint_name="dof_right_shoulder_yaw_02"),
-    Actuator(actuator_id=24, nn_id=3, kp=30.0, kd=1.0, max_torque=14.0, joint_name="dof_right_elbow_02"),
-    Actuator(actuator_id=25, nn_id=4, kp=20.0, kd=0.45, max_torque=1.0, joint_name="dof_right_wrist_00"),
+    Actuator(actuator_id=21, nn_id=0, kp=100.0, kd=4.0, max_torque=40.0, joint_name="dof_right_shoulder_pitch_03"),
+    Actuator(actuator_id=22, nn_id=1, kp=100.0, kd=4.0, max_torque=40.0, joint_name="dof_right_shoulder_roll_03"),
+    Actuator(actuator_id=23, nn_id=2, kp=40.0, kd=2.0, max_torque=14.0, joint_name="dof_right_shoulder_yaw_02"),
+    Actuator(actuator_id=24, nn_id=3, kp=40.0, kd=2.0, max_torque=14.0, joint_name="dof_right_elbow_02"),
+    Actuator(actuator_id=25, nn_id=4, kp=20.0, kd=2.0, max_torque=1.0, joint_name="dof_right_wrist_00"),
     # Left arm (nn_id 5-9)
-    Actuator(actuator_id=11, nn_id=5, kp=40.0, kd=4.0, max_torque=40.0, joint_name="dof_left_shoulder_pitch_03"),
-    Actuator(actuator_id=12, nn_id=6, kp=40.0, kd=4.0, max_torque=40.0, joint_name="dof_left_shoulder_roll_03"),
-    Actuator(actuator_id=13, nn_id=7, kp=30.0, kd=1.0, max_torque=14.0, joint_name="dof_left_shoulder_yaw_02"),
-    Actuator(actuator_id=14, nn_id=8, kp=30.0, kd=1.0, max_torque=14.0, joint_name="dof_left_elbow_02"),
-    Actuator(actuator_id=15, nn_id=9, kp=20.0, kd=0.45, max_torque=1.0, joint_name="dof_left_wrist_00"),
+    Actuator(actuator_id=11, nn_id=5, kp=100.0, kd=4.0, max_torque=40.0, joint_name="dof_left_shoulder_pitch_03"),
+    Actuator(actuator_id=12, nn_id=6, kp=100.0, kd=4.0, max_torque=40.0, joint_name="dof_left_shoulder_roll_03"),
+    Actuator(actuator_id=13, nn_id=7, kp=40.0, kd=2.0, max_torque=14.0, joint_name="dof_left_shoulder_yaw_02"),
+    Actuator(actuator_id=14, nn_id=8, kp=40.0, kd=2.0, max_torque=14.0, joint_name="dof_left_elbow_02"),
+    Actuator(actuator_id=15, nn_id=9, kp=20.0, kd=2.0, max_torque=1.0, joint_name="dof_left_wrist_00"),
     # Right leg (nn_id 10-14)
-    Actuator(actuator_id=41, nn_id=10, kp=85.0, kd=5.0, max_torque=60.0, joint_name="dof_right_hip_pitch_04"),
-    Actuator(actuator_id=42, nn_id=11, kp=40.0, kd=4.0, max_torque=40.0, joint_name="dof_right_hip_roll_03"),
-    Actuator(actuator_id=43, nn_id=12, kp=40.0, kd=4.0, max_torque=40.0, joint_name="dof_right_hip_yaw_03"),
-    Actuator(actuator_id=44, nn_id=13, kp=85.0, kd=5.0, max_torque=60.0, joint_name="dof_right_knee_04"),
-    Actuator(actuator_id=45, nn_id=14, kp=30.0, kd=1.0, max_torque=14.0, joint_name="dof_right_ankle_02"),
+    Actuator(actuator_id=41, nn_id=10, kp=150.0, kd=8.0, max_torque=60.0, joint_name="dof_right_hip_pitch_04"),
+    Actuator(actuator_id=42, nn_id=11, kp=150.0, kd=8.0, max_torque=40.0, joint_name="dof_right_hip_roll_03"),
+    Actuator(actuator_id=43, nn_id=12, kp=100.0, kd=4.0, max_torque=40.0, joint_name="dof_right_hip_yaw_03"),
+    Actuator(actuator_id=44, nn_id=13, kp=150.0, kd=8.0, max_torque=60.0, joint_name="dof_right_knee_04"),
+    Actuator(actuator_id=45, nn_id=14, kp=40.0, kd=8.0, max_torque=14.0, joint_name="dof_right_ankle_02"),
     # Left leg (nn_id 15-19)
-    Actuator(actuator_id=31, nn_id=15, kp=85.0, kd=5.0, max_torque=60.0, joint_name="dof_left_hip_pitch_04"),
-    Actuator(actuator_id=32, nn_id=16, kp=40.0, kd=4.0, max_torque=40.0, joint_name="dof_left_hip_roll_03"),
-    Actuator(actuator_id=33, nn_id=17, kp=40.0, kd=4.0, max_torque=40.0, joint_name="dof_left_hip_yaw_03"),
-    Actuator(actuator_id=34, nn_id=18, kp=85.0, kd=5.0, max_torque=60.0, joint_name="dof_left_knee_04"),
-    Actuator(actuator_id=35, nn_id=19, kp=30.0, kd=1.0, max_torque=14.0, joint_name="dof_left_ankle_02"),
+    Actuator(actuator_id=31, nn_id=15, kp=150.0, kd=8.0, max_torque=60.0, joint_name="dof_left_hip_pitch_04"),
+    Actuator(actuator_id=32, nn_id=16, kp=150.0, kd=8.0, max_torque=40.0, joint_name="dof_left_hip_roll_03"),
+    Actuator(actuator_id=33, nn_id=17, kp=100.0, kd=4.0, max_torque=40.0, joint_name="dof_left_hip_yaw_03"),
+    Actuator(actuator_id=34, nn_id=18, kp=150.0, kd=8.0, max_torque=60.0, joint_name="dof_left_knee_04"),
+    Actuator(actuator_id=35, nn_id=19, kp=40.0, kd=8.0, max_torque=14.0, joint_name="dof_left_ankle_02"),
 ]
 
+shoulder_roll_pos = 10
+elbow_pos = 90
+
+hip_pitch_pos = 25
+knee_pos = 50
+ankle_pos = 25
+
 home_position = {
+    # Right Arm
     21: 0.0,  # dof_right_shoulder_pitch_03
-    22: -10.0,  # dof_right_shoulder_roll_03
+    22: -shoulder_roll_pos,  # dof_right_shoulder_roll_03
     23: 0.0,  # dof_right_shoulder_yaw_02
-    24: 90.0,  # dof_right_elbow_02
+    24: elbow_pos,  # dof_right_elbow_02
     25: 0.0,  # dof_right_wrist_00
+    # Left Arm
     11: 0.0,  # dof_left_shoulder_pitch_03
-    12: 10.0,  # dof_left_shoulder_roll_03
+    12: shoulder_roll_pos,  # dof_left_shoulder_roll_03
     13: 0.0,  # dof_left_shoulder_yaw_02
-    14: -90.0,  # dof_left_elbow_02
+    14: -elbow_pos,  # dof_left_elbow_02
     15: 0.0,  # dof_left_wrist_00
-    41: -25.0,  # dof_right_hip_pitch_04
+    # Right Leg
+    41: -hip_pitch_pos,  # dof_right_hip_pitch_04
     42: 0.0,  # dof_right_hip_roll_03
     43: 0.0,  # dof_right_hip_yaw_03
-    44: -50.0,  # dof_right_knee_04
-    45: 25.0,  # dof_right_ankle_02
-    31: 25.0,  # dof_left_hip_pitch_04
+    44: -knee_pos,  # dof_right_knee_04
+    45: ankle_pos,  # dof_right_ankle_02
+    # Left Leg
+    31: hip_pitch_pos,  # dof_left_hip_pitch_04
     32: 0.0,  # dof_left_hip_roll_03
     33: 0.0,  # dof_left_hip_yaw_03
-    34: 50.0,  # dof_left_knee_04
-    35: -25.0,  # dof_left_ankle_02
+    34: knee_pos,  # dof_left_knee_04
+    35: -ankle_pos,  # dof_left_ankle_02
 }
 
 
