@@ -63,12 +63,14 @@ async def get_metadata(cache: bool = False) -> None:
             nn_id=joint.nn_id,
             kp=joint.kp,
             kd=joint.kd,
-            max_torque=joint.soft_torque_limit,
+            max_torque=float(joint.soft_torque_limit),
             joint_name=joint.name,
         )
         for joint in joint_name_to_metadata.values()
         if joint.nn_id is not None
     ]
+
+    logger.info("Actuator config: %s", actuator_list)
 
 
 home_position = {
