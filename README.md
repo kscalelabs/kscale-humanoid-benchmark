@@ -25,7 +25,7 @@ brew install git-lfs  # MacOS
 
 ```bash
 git clone git@github.com:<YOUR USERNAME>/kscale-humanoid-benchmark.git
-cd kscale-humanoid-benchmar
+cd kscale-humanoid-benchmark
 ```
 
 5. Create a new Python environment (we require Python 3.11 or later)
