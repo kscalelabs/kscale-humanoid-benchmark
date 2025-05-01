@@ -36,7 +36,7 @@ class Actuator:
 
 
 async def get_metadata(cache: bool = False) -> list[Actuator]:
-    model_name = "kbot-v2-feet"
+    model_name = "kbot-v2"
     metadata_path = get_robots_dir() / model_name / "metadata.json"
 
     if not cache or not (metadata_path.exists() and not should_refresh_file(metadata_path)):
@@ -56,6 +56,7 @@ async def get_metadata(cache: bool = False) -> list[Actuator]:
         raise ValueError("Joint metadata is not available")
 
     joint_name_to_metadata = metadata.joint_name_to_metadata
+    
 
     actuator_list = [
         Actuator(
@@ -466,9 +467,7 @@ async def main() -> None:
 
     logger.info("Args: %s", config)
 
-    actuator_list = await get_metadata()
-
-    exit()
+    actuator_list = await get_metadata(cache=True)
 
     await run_policy(config, actuator_list)
 
