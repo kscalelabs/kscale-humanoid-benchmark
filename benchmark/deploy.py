@@ -330,8 +330,8 @@ async def run_policy(config: DeployConfig) -> None:
                 },
             )
 
+            # Plot Action
             num_joints = len(actuator_list)
-
             action_data = np.array([d["action"] for d in data_values])
             pos_action = action_data[:, :num_joints]
 
@@ -347,7 +347,6 @@ async def run_policy(config: DeployConfig) -> None:
             plt.savefig(plot_path)
             plt.close()
             logger.info("Plot saved to %s", plot_path)
-            # Plot Action
 
         def _leaderboard_score(
             rollout_dict: RolloutDict,
@@ -459,7 +458,6 @@ async def run_policy(config: DeployConfig) -> None:
     await postflight()
 
 
-# python benchmark/deploy.py tf_model_300 --action-scale 1.0 --save-plots
 async def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("model_path", type=str)
