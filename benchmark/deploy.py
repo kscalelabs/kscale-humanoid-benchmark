@@ -18,6 +18,7 @@ import tensorflow as tf
 from kscale import K
 from kscale.web.gen.api import RobotURDFMetadataOutput
 from kscale.web.utils import get_robots_dir, should_refresh_file
+from xax.nn.geom import rotate_vector_by_quat
 
 logger = logging.getLogger(__name__)
 
@@ -34,16 +35,15 @@ class Actuator:
     joint_name: str
 
 
-async def get_metadata(cache: bool = False) -> None:
-    global actuator_list
+async def get_metadata(cache: bool = False) -> list[Actuator]:
     model_name = "kbot-v2-feet"
     metadata_path = get_robots_dir() / model_name / "metadata.json"
 
     if not cache or not (metadata_path.exists() and not should_refresh_file(metadata_path)):
-        with K() as api:
+        async with K() as api:
             robot_class = await api.get_robot_class(model_name)
             if (metadata := robot_class.metadata) is None:
-                raise ValueError(f"No metadata found for {model_name}") from err
+                raise ValueError(f"No metadata found for {model_name}")
 
         metadata_path.parent.mkdir(parents=True, exist_ok=True)
         with open(metadata_path, "w") as f:
@@ -59,18 +59,24 @@ async def get_metadata(cache: bool = False) -> None:
 
     actuator_list = [
         Actuator(
-            actuator_id=joint.id,
-            nn_id=joint.nn_id,
-            kp=joint.kp,
-            kd=joint.kd,
-            max_torque=float(joint.soft_torque_limit),
-            joint_name=joint.name,
+            actuator_id=joint_metadata.id,
+            nn_id=joint_metadata.nn_id,
+            kp=float(joint_metadata.kp),
+            kd=float(joint_metadata.kd),
+            max_torque=float(joint_metadata.soft_torque_limit),
+            joint_name=joint_name,
         )
-        for joint in joint_name_to_metadata.values()
-        if joint.nn_id is not None
+        for joint_name, joint_metadata in joint_name_to_metadata.items()
+        if joint_metadata.nn_id is not None
+        and joint_metadata.id is not None
+        and joint_metadata.kp is not None
+        and joint_metadata.kd is not None
+        and joint_metadata.soft_torque_limit is not None
     ]
 
     logger.info("Actuator config: %s", actuator_list)
+
+    return actuator_list
 
 
 home_position = {
@@ -146,7 +152,7 @@ class RolloutDict(TypedDict):
     data: dict[str, StepDataDict]
 
 
-async def run_policy(config: DeployConfig) -> None:
+async def run_policy(config: DeployConfig, actuator_list: list[Actuator]) -> None:
     phase = np.array([0, np.pi])
 
     async def get_obs(kos_client: pykos.KOS) -> dict:
@@ -460,9 +466,11 @@ async def main() -> None:
 
     logger.info("Args: %s", config)
 
-    await get_metadata()
+    actuator_list = await get_metadata()
 
-    await run_policy(config)
+    exit()
+
+    await run_policy(config, actuator_list)
 
 
 if __name__ == "__main__":
