@@ -15,7 +15,9 @@ import colorlogging
 import numpy as np
 import pykos
 import tensorflow as tf
-from xax.nn.geom import rotate_vector_by_quat
+from kscale import K
+from kscale.web.gen.api import RobotURDFMetadataOutput
+from kscale.web.utils import get_robots_dir, should_refresh_file
 
 logger = logging.getLogger(__name__)
 
@@ -32,32 +34,42 @@ class Actuator:
     joint_name: str
 
 
-actuator_list: list[Actuator] = [
-    # Right arm (nn_id 0-4)
-    Actuator(actuator_id=21, nn_id=0, kp=40.0, kd=4.0, max_torque=40.0, joint_name="dof_right_shoulder_pitch_03"),
-    Actuator(actuator_id=22, nn_id=1, kp=40.0, kd=4.0, max_torque=40.0, joint_name="dof_right_shoulder_roll_03"),
-    Actuator(actuator_id=23, nn_id=2, kp=30.0, kd=1.0, max_torque=14.0, joint_name="dof_right_shoulder_yaw_02"),
-    Actuator(actuator_id=24, nn_id=3, kp=30.0, kd=1.0, max_torque=14.0, joint_name="dof_right_elbow_02"),
-    Actuator(actuator_id=25, nn_id=4, kp=20.0, kd=0.45, max_torque=1.0, joint_name="dof_right_wrist_00"),
-    # Left arm (nn_id 5-9)
-    Actuator(actuator_id=11, nn_id=5, kp=40.0, kd=4.0, max_torque=40.0, joint_name="dof_left_shoulder_pitch_03"),
-    Actuator(actuator_id=12, nn_id=6, kp=40.0, kd=4.0, max_torque=40.0, joint_name="dof_left_shoulder_roll_03"),
-    Actuator(actuator_id=13, nn_id=7, kp=30.0, kd=1.0, max_torque=14.0, joint_name="dof_left_shoulder_yaw_02"),
-    Actuator(actuator_id=14, nn_id=8, kp=30.0, kd=1.0, max_torque=14.0, joint_name="dof_left_elbow_02"),
-    Actuator(actuator_id=15, nn_id=9, kp=20.0, kd=0.45, max_torque=1.0, joint_name="dof_left_wrist_00"),
-    # Right leg (nn_id 10-14)
-    Actuator(actuator_id=41, nn_id=10, kp=85.0, kd=5.0, max_torque=60.0, joint_name="dof_right_hip_pitch_04"),
-    Actuator(actuator_id=42, nn_id=11, kp=40.0, kd=4.0, max_torque=40.0, joint_name="dof_right_hip_roll_03"),
-    Actuator(actuator_id=43, nn_id=12, kp=40.0, kd=4.0, max_torque=40.0, joint_name="dof_right_hip_yaw_03"),
-    Actuator(actuator_id=44, nn_id=13, kp=85.0, kd=5.0, max_torque=60.0, joint_name="dof_right_knee_04"),
-    Actuator(actuator_id=45, nn_id=14, kp=30.0, kd=1.0, max_torque=14.0, joint_name="dof_right_ankle_02"),
-    # Left leg (nn_id 15-19)
-    Actuator(actuator_id=31, nn_id=15, kp=85.0, kd=5.0, max_torque=60.0, joint_name="dof_left_hip_pitch_04"),
-    Actuator(actuator_id=32, nn_id=16, kp=40.0, kd=4.0, max_torque=40.0, joint_name="dof_left_hip_roll_03"),
-    Actuator(actuator_id=33, nn_id=17, kp=40.0, kd=4.0, max_torque=40.0, joint_name="dof_left_hip_yaw_03"),
-    Actuator(actuator_id=34, nn_id=18, kp=85.0, kd=5.0, max_torque=60.0, joint_name="dof_left_knee_04"),
-    Actuator(actuator_id=35, nn_id=19, kp=30.0, kd=1.0, max_torque=14.0, joint_name="dof_left_ankle_02"),
-]
+async def get_metadata(cache: bool = False) -> None:
+    global actuator_list
+    model_name = "kbot-v2-feet"
+    metadata_path = get_robots_dir() / model_name / "metadata.json"
+
+    if not cache or not (metadata_path.exists() and not should_refresh_file(metadata_path)):
+        with K() as api:
+            robot_class = await api.get_robot_class(model_name)
+            if (metadata := robot_class.metadata) is None:
+                raise ValueError(f"No metadata found for {model_name}") from err
+
+        metadata_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(metadata_path, "w") as f:
+            json.dump(metadata.model_dump(), f, indent=2)
+
+    with open(metadata_path, "r") as f:
+        metadata = RobotURDFMetadataOutput.model_validate_json(f.read())
+
+    if metadata.joint_name_to_metadata is None:
+        raise ValueError("Joint metadata is not available")
+
+    joint_name_to_metadata = metadata.joint_name_to_metadata
+
+    actuator_list = [
+        Actuator(
+            actuator_id=joint.id,
+            nn_id=joint.nn_id,
+            kp=joint.kp,
+            kd=joint.kd,
+            max_torque=joint.soft_torque_limit,
+            joint_name=joint.name,
+        )
+        for joint in joint_name_to_metadata.values()
+        if joint.nn_id is not None
+    ]
+
 
 home_position = {
     21: 0.0,  # dof_right_shoulder_pitch_03
@@ -445,6 +457,8 @@ async def main() -> None:
     config = DeployConfig(**vars(args))
 
     logger.info("Args: %s", config)
+
+    await get_metadata()
 
     await run_policy(config)
 
