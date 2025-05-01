@@ -133,14 +133,12 @@ class RolloutDict(TypedDict):
 
 
 async def run_policy(config: DeployConfig) -> None:
-    phase = np.array([0, np.pi])
-
     async def get_obs(kos_client: pykos.KOS) -> dict:
-        nonlocal phase
-        actuator_states, imu, quaternion = await asyncio.gather(
+        actuator_states, imu, quaternion, gt_observation = await asyncio.gather(
             kos_client.actuator.get_actuators_state([ac.actuator_id for ac in actuator_list]),
             kos_client.imu.get_imu_values(),
             kos_client.imu.get_quaternion(),
+            kos_client.sim.get_ground_truth_observation(),
         )
 
         # Joint observations
@@ -161,17 +159,13 @@ async def run_policy(config: DeployConfig) -> None:
             inverse=True,
         )
 
-        # Timestep phase
-        phase += 2 * np.pi * config.gait * config.dt
-        phase = np.fmod(phase + np.pi, 2 * np.pi) - np.pi
-        phase_vec = np.array([np.cos(phase), np.sin(phase)]).flatten()
-
         return {
-            "timestep_phase": phase_vec,
             "pos_obs": pos_obs,
             "vel_obs": vel_obs,
             "imu_gyro": imu_gyro,
             "projected_gravity": projected_gravity,
+            "base_velocity": np.array(gt_observation.base_linear_velocity),
+            "base_angular_velocity": np.array(gt_observation.base_angular_velocity),
         }
 
     def obs_to_vec(obs: dict, cmd: dict) -> np.ndarray:
@@ -312,17 +306,27 @@ async def run_policy(config: DeployConfig) -> None:
                 "obs",
                 {"imu_gyro": "Gyro (rad/s)", "projected_gravity": "Gravity (m/s^2)"},
             )
-            save_plot("obs_phase", "Observed Timestep Phase", "obs", {"timestep_phase": "Phase (cos/sin)"})
 
             # Plot Commands
             save_plot(
-                "cmd",
-                "Commands",
+                "cmd_linear",
+                "Linear commands",
                 "cmd",
                 {
                     "linear_command_x": "Linear X (m/s)",
                     "linear_command_y": "Linear Y (m/s)",
+                    "commanded_velocity_x": "Command X Velocity (m/s)",
+                    "commanded_velocity_y": "Command Y Velocity (m/s)",
+                },
+            )
+
+            save_plot(
+                "cmd_angular",
+                "Angular commands",
+                "cmd",
+                {
                     "angular_command": "Angular (rad/s)",
+                    "commanded_angular_velocity": "Command Angular (rad/s)",
                 },
             )
 
@@ -343,6 +347,28 @@ async def run_policy(config: DeployConfig) -> None:
             plt.savefig(plot_path)
             plt.close()
             logger.info("Plot saved to %s", plot_path)
+            # Plot Action
+
+        def _leaderboard_score(
+            rollout_dict: RolloutDict,
+            weight_linear: float = 1.0,
+            weight_angular: float = 0.2,
+        ) -> float:
+            linear_command_x = np.array([d["cmd"]["linear_command_x"][0] for d in rollout_dict["data"].values()])
+            linear_command_y = np.array([d["cmd"]["linear_command_y"][0] for d in rollout_dict["data"].values()])
+            angular_command = np.array([d["cmd"]["angular_command"][0] for d in rollout_dict["data"].values()])
+
+            linear_vel_x = np.array([d["cmd"]["commanded_velocity_x"] for d in rollout_dict["data"].values()])
+            linear_vel_y = np.array([d["cmd"]["commanded_velocity_y"] for d in rollout_dict["data"].values()])
+            angular_vel = np.array([d["cmd"]["commanded_angular_velocity"] for d in rollout_dict["data"].values()])
+
+            linear_error = np.mean(np.abs(linear_command_x - linear_vel_x) + np.abs(linear_command_y - linear_vel_y))
+            angular_error = np.mean(np.abs(angular_command - angular_vel))
+
+            total_error = weight_linear * linear_error + weight_angular * angular_error
+            return max(0, 100 - total_error * 100)
+
+        logger.info("Leaderboard score: %f", _leaderboard_score(rollout_dict))
 
     rollout_dict: RolloutDict = {
         "header": {
@@ -350,13 +376,14 @@ async def run_policy(config: DeployConfig) -> None:
                 "obs": {
                     "Projected gravity": "Units in m/s^2",
                     "IMU gyro": "Units in rad/s",
-                    "Timestep phase": "",
                     "Position": "Units in rad",
                     "Velocity": "Units in rad/s",
                 },
                 "cmd": {
                     "Linear command": "Units in m/s",
                     "Angular command": "Units in rad/s",
+                    "Commanded velocity": "Units in m/s",
+                    "Commanded angular velocity": "Units in rad/s",
                 },
                 "action": {
                     "Position": "Units in rad",
@@ -396,13 +423,19 @@ async def run_policy(config: DeployConfig) -> None:
     try:
         while time.time() - start_time < config.episode_length:
             action, carry = model.infer(obs_to_vec(obs, cmd), carry)
-
             action_array = np.array(action).reshape(-1)
 
             elapsed_time = time.time() - start_time
             rollout_dict["data"][f"{elapsed_time:.4f}"] = StepDataDict(
                 obs={k: v.tolist() for k, v in obs.items()},
-                cmd={k: v.tolist() for k, v in cmd.items()},
+                cmd={
+                    **{k: v.tolist() for k, v in cmd.items()},
+                    **{
+                        "commanded_velocity_x": obs["base_velocity"][0],
+                        "commanded_velocity_y": obs["base_velocity"][1],
+                        "commanded_angular_velocity": obs["base_angular_velocity"][2],
+                    },
+                },
                 action=action_array.tolist(),
             )
 
@@ -426,6 +459,7 @@ async def run_policy(config: DeployConfig) -> None:
     await postflight()
 
 
+# python benchmark/deploy.py tf_model_300 --action-scale 1.0 --save-plots
 async def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("model_path", type=str)
