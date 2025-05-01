@@ -68,7 +68,7 @@ class BentArmPenalty(ksim.Reward):
         scale: float,
         scale_by_curriculum: bool = False,
     ) -> Self:
-        joint_names = ksim.get_joint_names_in_order(model)
+        qpos_mapping = ksim.get_qpos_data_idxs_by_name(model)
 
         names_to_offsets = [
             ("dof_right_shoulder_pitch_03", 0.0),
@@ -83,7 +83,7 @@ class BentArmPenalty(ksim.Reward):
             ("dof_left_wrist_00", 0.0),
         ]
 
-        arm_indices = [joint_names.index(name) for name, _ in names_to_offsets]
+        arm_indices = [qpos_mapping[name][0] for name, _ in names_to_offsets]
         arm_targets = [offset for _, offset in names_to_offsets]
 
         return cls(
