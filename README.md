@@ -25,11 +25,11 @@ brew install git-lfs  # MacOS
 
 ```bash
 git clone git@github.com:<YOUR USERNAME>/kscale-humanoid-benchmark.git
-cd kscale-humanoid-benchmar
+cd kscale-humanoid-benchmark
 ```
 
 5. Create a new Python environment (we require Python 3.11 or later)
-6. Install the package with it's dependencies:
+6. Install the package with its dependencies:
 
 ```bash
 pip install .
@@ -47,11 +47,11 @@ python -m benchmark.train
 python -m benchmark.deploy
 ```
 
-8. Add a video of your new policy to this README
-9. Push your code and model to your repository, and make sure the repository is public
-10. Write a message with a link to your repository on our [Discord](https://url.kscale.dev/discord) in the "【🧠】submissions" channel
-11. Wait for one of us to run it on the real robot - this should take about a day
-12. Viola! Your name will now appear on our [leaderboard](https://url.kscale.dev/leaderboard)
+9. Add a video of your new policy to this README
+10. Push your code and model to your repository, and make sure the repository is public
+11. Write a message with a link to your repository on our [Discord](https://url.kscale.dev/discord) in the "【🧠】submissions" channel
+12. Wait for one of us to run it on the real robot - this should take about a day
+13. Voila! Your name will now appear on our [leaderboard](https://url.kscale.dev/leaderboard)
 
 ## Tips and Tricks
 
