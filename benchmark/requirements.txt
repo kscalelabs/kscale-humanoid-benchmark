@@ -1,5 +1,0 @@
-# requirements.txt
-
-ksim
-kos-sim
-tensorflow
