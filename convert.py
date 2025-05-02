@@ -8,7 +8,7 @@ import jax
 from jaxtyping import Array
 from xax.nn.export import export as xax_export
 
-from train import NUM_ACTOR_INPUTS, HumanoidWalkingTask, HumanoidWalkingTaskConfig, Model
+from train import NUM_ACTOR_INPUTS, HumanoidWalkingTask, Model
 
 
 def make_export_model(model: Model) -> Callable:
@@ -31,7 +31,7 @@ def main() -> None:
     if not (ckpt_path := Path(args.checkpoint_path)).exists():
         raise FileNotFoundError(f"Checkpoint path {ckpt_path} does not exist")
 
-    task: HumanoidWalkingTask[HumanoidWalkingTaskConfig] = HumanoidWalkingTask.load_task(ckpt_path)
+    task: HumanoidWalkingTask = HumanoidWalkingTask.load_task(ckpt_path)
     model: Model = task.load_ckpt(ckpt_path, part="model")[0]
     model_fn = make_export_model(model)
 

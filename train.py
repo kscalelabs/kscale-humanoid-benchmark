@@ -56,7 +56,7 @@ MAX_TORQUE = {
 }
 
 
-@attrs.define
+@attrs.define(frozen=True, kw_only=True)
 class BentArmPenalty(ksim.Reward):
     arm_indices: tuple[int, ...] = attrs.field()
     arm_targets: tuple[float, ...] = attrs.field()
