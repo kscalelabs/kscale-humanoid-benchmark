@@ -77,3 +77,10 @@ This repository contains a pre-trained checkpoint, which is useful for both jump
 ```bash
 python -m train load_from_ckpt_path=assets/ckpt.bin
 ```
+
+If you want to use the Jupyter notebook and don't want to commit your training logs, we suggest using [pre-commit](https://pre-commit.com/) to clean the notebook before committing:
+
+```bash
+pip install pre-commit
+pre-commit install
+```
