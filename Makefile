@@ -2,6 +2,10 @@
 
 py-files := $(shell find . -name '*.py' -not -path "*/run_*/*")
 
+install:
+	pip install --upgrade --upgrade-strategy eager -r requirements.txt
+.PHONY: install
+
 format:
 	@black $(py-files)
 	@ruff format $(py-files)
@@ -9,6 +13,7 @@ format:
 .PHONY: format
 
 static-checks:
+	@mkdir -p .mypy_cache
 	@black --diff --check $(py-files)
 	@ruff check $(py-files)
 	@mypy --install-types --non-interactive $(py-files)
