@@ -8,7 +8,7 @@ import jax
 from jaxtyping import Array
 from xax.nn.export import export as xax_export
 
-from benchmark.train import NUM_ACTOR_INPUTS, HumanoidWalkingTask, HumanoidWalkingTaskConfig, Model
+from train import NUM_ACTOR_INPUTS, HumanoidWalkingTask, HumanoidWalkingTaskConfig, Model
 
 
 def make_export_model(model: Model) -> Callable:
