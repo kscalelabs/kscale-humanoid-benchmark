@@ -12,6 +12,8 @@
 
 ## Getting Started
 
+### Template
+
 1. Read through the [current leaderboard](https://url.kscale.dev/leaderboard) submissions and through the [ksim examples](https://github.com/kscalelabs/ksim/tree/master/examples)
 2. Create a new repository from this template by clicking [here](https://github.com/new?template_name=kscale-humanoid-benchmark&template_owner=kscalelabs)
 3. Make sure you have installed `git-lfs`:
@@ -53,6 +55,10 @@ python -m deploy
 11. Write a message with a link to your repository on our [Discord](https://url.kscale.dev/discord) in the "【🧠】submissions" channel
 12. Wait for one of us to run it on the real robot - this should take about a day
 13. Voila! Your name will now appear on our [leaderboard](https://url.kscale.dev/leaderboard)
+
+### Google Colab
+
+You can also try out the [training notebook](https://colab.research.google.com/github/kscalelabs/kscale-humanoid-benchmark/blob/master/train.ipynb) in Google Colab.
 
 ## Troubleshooting
 
