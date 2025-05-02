@@ -12,6 +12,8 @@
 
 ## Getting Started
 
+You can use this repository as a GitHub template or as a Google Colab.
+
 ### Template
 
 1. Read through the [current leaderboard](https://url.kscale.dev/leaderboard) submissions and through the [ksim examples](https://github.com/kscalelabs/ksim/tree/master/examples)
