@@ -60,7 +60,7 @@ python -m deploy
 
 ### Google Colab
 
-If your access to compute is limited, you can try out the [training notebook](https://colab.research.google.com/github/kscalelabs/kscale-humanoid-benchmark/blob/master/train.ipynb) in Google Colab.
+You can also quickly try out the humanoid benchmark by running the [training notebook](https://colab.research.google.com/github/kscalelabs/kscale-humanoid-benchmark/blob/master/train.ipynb) in Google Colab.
 
 ## Troubleshooting
 
