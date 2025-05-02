@@ -2,4 +2,3 @@
 
 ksim
 kos-sim
-tensorflow
