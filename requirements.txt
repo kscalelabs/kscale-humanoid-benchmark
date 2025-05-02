@@ -1,4 +1,8 @@
 # requirements.txt
 
+# Training dependencies
 ksim
+
+# Inference dependencies
 kos-sim
+xax[exportable]
