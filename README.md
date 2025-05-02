@@ -54,7 +54,7 @@ python -m deploy
 12. Wait for one of us to run it on the real robot - this should take about a day
 13. Voila! Your name will now appear on our [leaderboard](https://url.kscale.dev/leaderboard)
 
-## Troublshooting
+## Troubleshooting
 
 If you encounter issues, please consult the [ksim documentation](https://docs.kscale.dev/docs/ksim#/) or reach out to us on [Discord](https://url.kscale.dev/docs).
 
