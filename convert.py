@@ -12,7 +12,6 @@ from benchmark.train import NUM_ACTOR_INPUTS, HumanoidWalkingTask, HumanoidWalki
 
 
 def make_export_model(model: Model) -> Callable:
-
     def model_fn(obs: Array, carry: Array) -> tuple[Array, Array]:
         dist, carry = model.actor.forward(obs, carry)
         return dist.mode(), carry

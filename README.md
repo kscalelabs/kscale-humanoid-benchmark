@@ -21,7 +21,7 @@ sudo apt install git-lfs  # Ubuntu
 brew install git-lfs  # MacOS
 ```
 
-4. Clone the resulting repository:
+4. Clone the new repository you create from this template:
 
 ```bash
 git clone git@github.com:<YOUR USERNAME>/kscale-humanoid-benchmark.git
@@ -32,19 +32,19 @@ cd kscale-humanoid-benchmark
 6. Install the package with its dependencies:
 
 ```bash
-pip install .
+pip install -r requirements.txt
 ```
 
 7. Train a policy:
 
 ```bash
-python -m benchmark.train
+python -m train
 ```
 
 8. Update the policy weights in `assets` and run the deployment script on your new policy:
 
 ```bash
-python -m benchmark.deploy
+python -m deploy
 ```
 
 9. Add a video of your new policy to this README
@@ -53,22 +53,26 @@ python -m benchmark.deploy
 12. Wait for one of us to run it on the real robot - this should take about a day
 13. Voila! Your name will now appear on our [leaderboard](https://url.kscale.dev/leaderboard)
 
+## Troublshooting
+
+If you encounter issues, please consult the [ksim documentation](https://docs.kscale.dev/docs/ksim#/) or reach out to us on [Discord](https://url.kscale.dev/docs).
+
 ## Tips and Tricks
 
 To see all the available command line arguments, use the command:
 
 ```bash
-python -m benchmark.train --help
+python -m train --help
 ```
 
 To visualize running your model without using `kos-sim`, use the command:
 
 ```bash
-python -m benchmark.train run_model_viewer=True
+python -m train run_model_viewer=True
 ```
 
 This repository contains a pre-trained checkpoint, which is useful for both jump-starting model training and understanding the codebase. To initialize training from this checkpoint, use the command:
 
 ```bash
-python -m benchmark.train load_from_ckpt_path=assets/ckpt.bin
+python -m train load_from_ckpt_path=assets/ckpt.bin
 ```
