@@ -6,3 +6,9 @@ ksim
 # Inference dependencies
 kos-sim
 xax[exportable]
+
+# Jupyter Notebook dependencies
+jupyter
+ipykernel
+pre-commit
+nbstripout

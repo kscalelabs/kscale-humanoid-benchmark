@@ -18,3 +18,7 @@ static-checks:
 	@ruff check $(py-files)
 	@mypy --install-types --non-interactive $(py-files)
 .PHONY: lint
+
+notebook:
+	jupyter notebook --ip=0.0.0.0 --port=8888 --no-browser
+.PHONY: notebook

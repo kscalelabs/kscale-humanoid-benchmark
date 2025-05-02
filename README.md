@@ -33,6 +33,7 @@ cd kscale-humanoid-benchmark
 
 ```bash
 pip install -r requirements.txt
+pip install 'jax[cuda12]'  # If using GPU machine, install Jax CUDA libraries
 ```
 
 7. Train a policy:

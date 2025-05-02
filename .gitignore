@@ -11,6 +11,9 @@ __pycache__/
 .ruff_cache/
 .dmypy.json
 
+# Jupyter
+.ipynb_checkpoints/
+
 # Databases
 *.db
 

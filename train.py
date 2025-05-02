@@ -3,7 +3,7 @@
 import asyncio
 import math
 from dataclasses import dataclass
-from typing import Generic, Self, TypeVar
+from typing import Self
 
 import attrs
 import distrax
@@ -342,10 +342,7 @@ class HumanoidWalkingTaskConfig(ksim.PPOConfig):
     )
 
 
-Config = TypeVar("Config", bound=HumanoidWalkingTaskConfig)
-
-
-class HumanoidWalkingTask(ksim.PPOTask[Config], Generic[Config]):
+class HumanoidWalkingTask(ksim.PPOTask[HumanoidWalkingTaskConfig]):
     def get_optimizer(self) -> optax.GradientTransformation:
         optimizer = optax.chain(
             optax.clip_by_global_norm(self.config.max_grad_norm),
