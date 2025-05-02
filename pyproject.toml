@@ -73,6 +73,10 @@ dummy-variable-rgx = "^(_+|(_+[a-zA-Z0-9_]*[a-zA-Z0-9]+?))$"
 
 "__init__.py" = ["E402", "F401", "F403", "F811"]
 
+[tool.ruff.lint.pydocstyle]
+
+convention = "google"
+
 [tool.ruff.lint.isort]
 
 known-first-party = ["benchmark", "tests"]

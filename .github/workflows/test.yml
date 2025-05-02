@@ -45,6 +45,7 @@ jobs:
       - name: Install package
         run: |
           make install
+          make install-dev
 
       - name: Run static checks
         run: |

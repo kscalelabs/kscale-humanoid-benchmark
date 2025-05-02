@@ -3,8 +3,12 @@
 py-files := $(shell find . -name '*.py' -not -path "*/run_*/*")
 
 install:
-	pip install --upgrade --upgrade-strategy eager -r requirements.txt
+	@pip install --upgrade --upgrade-strategy eager -r requirements.txt
 .PHONY: install
+
+install-dev:
+	@pip install black ruff mypy
+.PHONY: install-dev
 
 format:
 	@black $(py-files)
