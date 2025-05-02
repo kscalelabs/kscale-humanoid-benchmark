@@ -11,4 +11,3 @@ xax[exportable]
 jupyter
 ipykernel
 pre-commit
-nbstripout
