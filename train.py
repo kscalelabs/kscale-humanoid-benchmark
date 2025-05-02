@@ -3,9 +3,7 @@
 import asyncio
 import math
 from dataclasses import dataclass
-from typing import Self
 
-import attrs
 import distrax
 import equinox as eqx
 import jax
@@ -46,59 +44,6 @@ ZEROS: list[tuple[str, float]] = [
     ("dof_left_knee_04", math.radians(50.0)),
     ("dof_left_ankle_02", math.radians(-25.0)),
 ]
-
-# These are the torques we clip outputs to when deploying the policy.
-MAX_TORQUE = {
-    "00": 1.0,  # 00 motor
-    "02": 13.0,  # 02 motor
-    "03": 48.0,  # 03 motor
-    "04": 96.0,  # 04 motor
-}
-
-
-@attrs.define(frozen=True, kw_only=True)
-class BentArmPenalty(ksim.Reward):
-    arm_indices: tuple[int, ...] = attrs.field()
-    arm_targets: tuple[float, ...] = attrs.field()
-
-    def get_reward(self, trajectory: ksim.Trajectory) -> Array:
-        qpos = trajectory.qpos[..., self.arm_indices]
-        qpos_targets = jnp.array(self.arm_targets)
-        qpos_diff = qpos - qpos_targets
-        return xax.get_norm(qpos_diff, "l1").mean(axis=-1)
-
-    @classmethod
-    def create(
-        cls,
-        model: ksim.PhysicsModel,
-        scale: float,
-        scale_by_curriculum: bool = False,
-    ) -> Self:
-        qpos_mapping = ksim.get_qpos_data_idxs_by_name(model)
-
-        names = [
-            "dof_right_shoulder_pitch_03",
-            "dof_right_shoulder_roll_03",
-            "dof_right_shoulder_yaw_02",
-            "dof_right_elbow_02",
-            "dof_right_wrist_00",
-            "dof_left_shoulder_pitch_03",
-            "dof_left_shoulder_roll_03",
-            "dof_left_shoulder_yaw_02",
-            "dof_left_elbow_02",
-            "dof_left_wrist_00",
-        ]
-
-        zeros = {k: v for k, v in ZEROS}
-        arm_indices = [qpos_mapping[name][0] for name in names]
-        arm_targets = [zeros[name] for name in names]
-
-        return cls(
-            arm_indices=tuple(arm_indices),
-            arm_targets=tuple(arm_targets),
-            scale=scale,
-            scale_by_curriculum=scale_by_curriculum,
-        )
 
 
 class Actor(eqx.Module):
@@ -374,32 +319,6 @@ class HumanoidWalkingTask(ksim.PPOTask[HumanoidWalkingTaskConfig]):
         return ksim.MITPositionActuators(
             physics_model=physics_model,
             joint_name_to_metadata=metadata,
-            ctrl_clip=[
-                # right arm
-                MAX_TORQUE["03"],
-                MAX_TORQUE["03"],
-                MAX_TORQUE["02"],
-                MAX_TORQUE["02"],
-                MAX_TORQUE["00"],
-                # left arm
-                MAX_TORQUE["03"],
-                MAX_TORQUE["03"],
-                MAX_TORQUE["02"],
-                MAX_TORQUE["02"],
-                MAX_TORQUE["00"],
-                # right leg
-                MAX_TORQUE["04"],
-                MAX_TORQUE["03"],
-                MAX_TORQUE["03"],
-                MAX_TORQUE["04"],
-                MAX_TORQUE["02"],
-                # left leg
-                MAX_TORQUE["04"],
-                MAX_TORQUE["03"],
-                MAX_TORQUE["03"],
-                MAX_TORQUE["04"],
-                MAX_TORQUE["02"],
-            ],
         )
 
     def get_physics_randomizers(self, physics_model: ksim.PhysicsModel) -> list[ksim.PhysicsRandomizer]:
@@ -460,13 +379,25 @@ class HumanoidWalkingTask(ksim.PPOTask[HumanoidWalkingTaskConfig]):
         ]
 
     def get_commands(self, physics_model: ksim.PhysicsModel) -> list[ksim.Command]:
-        return []
+        return [
+            (
+                ksim.JoystickCommand(
+                    ranges=((0, 1),),
+                    switch_prob=self.config.ctrl_dt / 5,  # Switch every 5 seconds, on average.
+                )
+            ),
+        ]
 
     def get_rewards(self, physics_model: ksim.PhysicsModel) -> list[ksim.Reward]:
         return [
             # Standard rewards.
             ksim.StayAliveReward(scale=1.0),
-            ksim.NaiveForwardReward(clip_min=0.0, clip_max=0.5, scale=1.0),
+            ksim.JoystickReward(
+                linear_velocity_clip_max=0.5,
+                angular_velocity_clip_max=0.0,
+                command_name="joystick_command",
+                scale=1.0,
+            ),
             ksim.UprightReward(index="x", inverted=False, scale=0.1),
             # Normalization penalties.
             ksim.ActionInBoundsReward.create(physics_model, scale=0.01),
@@ -478,8 +409,41 @@ class HumanoidWalkingTask(ksim.PPOTask[HumanoidWalkingTaskConfig]):
             ksim.AngularVelocityPenalty(index="z", scale=-0.0005),
             ksim.LinearVelocityPenalty(index="y", scale=-0.0005),
             ksim.LinearVelocityPenalty(index="z", scale=-0.0005),
-            # Bespoke rewards.
-            BentArmPenalty.create(physics_model, scale=-0.01),
+            ksim.AvoidLimitsPenalty.create(physics_model, scale=-1.0),
+            # Freeze the arms
+            ksim.JointDeviationPenalty.create(
+                physics_model,
+                joint_names=(
+                    "dof_right_shoulder_pitch_03",
+                    "dof_right_shoulder_roll_03",
+                    "dof_right_shoulder_yaw_02",
+                    "dof_right_elbow_02",
+                    "dof_right_wrist_00",
+                    "dof_left_shoulder_pitch_03",
+                    "dof_left_shoulder_roll_03",
+                    "dof_left_shoulder_yaw_02",
+                    "dof_left_elbow_02",
+                    "dof_left_wrist_00",
+                ),
+                joint_targets=tuple(
+                    [
+                        {k: v for k, v in ZEROS}[i]
+                        for i in [
+                            "dof_right_shoulder_pitch_03",
+                            "dof_right_shoulder_roll_03",
+                            "dof_right_shoulder_yaw_02",
+                            "dof_right_elbow_02",
+                            "dof_right_wrist_00",
+                            "dof_left_shoulder_pitch_03",
+                            "dof_left_shoulder_roll_03",
+                            "dof_left_shoulder_yaw_02",
+                            "dof_left_elbow_02",
+                            "dof_left_wrist_00",
+                        ]
+                    ]
+                ),
+                scale=-1.0,
+            ),
         ]
 
     def get_terminations(self, physics_model: ksim.PhysicsModel) -> list[ksim.Termination]:
@@ -654,6 +618,7 @@ class HumanoidWalkingTask(ksim.PPOTask[HumanoidWalkingTaskConfig]):
 
 
 if __name__ == "__main__":
+    # python -m train disable_multiprocessing=True
     HumanoidWalkingTask.launch(
         HumanoidWalkingTaskConfig(
             # Training parameters.
@@ -669,6 +634,6 @@ if __name__ == "__main__":
             ls_iterations=8,
             max_action_latency=0.01,
             # Checkpointing parameters.
-            save_every_n_seconds=60,
+            valid_every_n_seconds=300,
         ),
     )
