@@ -18,6 +18,7 @@ import tensorflow as tf
 from kscale import K
 from kscale.web.gen.api import RobotURDFMetadataOutput
 from kscale.web.utils import get_robots_dir, should_refresh_file
+from maa import format_table_log
 from xax.nn.geom import rotate_vector_by_quat
 
 logger = logging.getLogger(__name__)
@@ -56,7 +57,6 @@ async def get_metadata(no_cache: bool = False) -> list[Actuator]:
         raise ValueError("Joint metadata is not available")
 
     joint_name_to_metadata = metadata.joint_name_to_metadata
-    
 
     actuator_list = [
         Actuator(
@@ -75,7 +75,31 @@ async def get_metadata(no_cache: bool = False) -> list[Actuator]:
         and joint_metadata.soft_torque_limit is not None
     ]
 
-    logger.info("Actuator config: %s", actuator_list)
+    table_data = [
+        {
+            "name": ac.joint_name,
+            "id": ac.actuator_id,
+            "nn_id": ac.nn_id,
+            "kp": ac.kp,
+            "kd": ac.kd,
+            "max_torque": ac.max_torque,
+        }
+        for ac in sorted(actuator_list, key=lambda x: x.actuator_id)
+    ]
+
+    legend = [
+        {"data_key": "name", "header": "Joint Name", "width": 30},
+        {"data_key": "id", "header": "ID", "width": 2},
+        {"data_key": "nn_id", "header": "NN ID", "width": 5},
+        {"data_key": "kp", "header": "KP", "width": 6},
+        {"data_key": "kd", "header": "KD", "width": 6},
+        {"data_key": "max_torque", "header": "Max Torque", "width": 10},
+    ]
+
+    table_string = format_table_log(
+        title="Actuator configs", legend=legend, data=table_data, include_row_separators=True
+    )
+    logger.info("\n%s", table_string)
 
     return actuator_list
 
