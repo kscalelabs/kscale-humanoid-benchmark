@@ -36,15 +36,18 @@ class Actuator:
     joint_name: str
 
 
-async def get_metadata(no_cache: bool = False) -> list[Actuator]:
-    model_name = "kbot-v2"
-    metadata_path = get_robots_dir() / model_name / "metadata.json"
+async def get_metadata(model_name_or_dir: str, no_cache: bool = False) -> list[Actuator]:
+    # Assumes if the directory exists, it contains a metadata.json file
+    if os.path.exists(Path(model_name_or_dir) / "metadata.json"):
+        metadata_path = Path(model_name_or_dir) / "metadata.json"
+    else:
+        metadata_path = get_robots_dir() / model_name_or_dir / "metadata.json"
 
     if no_cache or not (metadata_path.exists() and not should_refresh_file(metadata_path)):
         async with K() as api:
-            robot_class = await api.get_robot_class(model_name)
+            robot_class = await api.get_robot_class(model_name_or_dir)
             if (metadata := robot_class.metadata) is None:
-                raise ValueError(f"No metadata found for {model_name}")
+                raise ValueError(f"No metadata found for {model_name_or_dir}")
 
         metadata_path.parent.mkdir(parents=True, exist_ok=True)
         with open(metadata_path, "w") as f:
@@ -131,13 +134,14 @@ home_position = {
 
 @dataclass
 class DeployConfig:
-    model_path: str = field(default="", metadata={"help": "Path to the model to deploy"})
+    policy_path: str = field(default="", metadata={"help": "Path to the policy to deploy"})
     action_scale: float = field(default=0.1, metadata={"help": "Scale of the action outputs"})
     run_mode: RunMode = field(default="sim", metadata={"help": "Run mode"})
     joystick_enabled: bool = field(default=False, metadata={"help": "Whether to use joystick"})
     episode_length: int = field(default=10, metadata={"help": "Length of the episode to run in seconds"})
     ip: str = field(default="localhost", metadata={"help": "KOS server IP address"})
     port: int = field(default=50051, metadata={"help": "KOS server port"})
+    metadata: str = field(default="kbot-v2", metadata={"help": "Metadata model / path to use for the policy"})
     no_cache: bool = field(default=False, metadata={"help": "Whether to use cached metadata"})
     # Logging
     debug: bool = field(default=False, metadata={"help": "Whether to run in debug mode"})
@@ -179,7 +183,6 @@ class RolloutDict(TypedDict):
 
 
 async def run_policy(config: DeployConfig, actuator_list: list[Actuator]) -> None:
-
     async def get_obs(kos_client: pykos.KOS) -> dict:
         actuator_states, quaternion = await asyncio.gather(
             kos_client.actuator.get_actuators_state([ac.actuator_id for ac in actuator_list]),
@@ -404,7 +407,7 @@ async def run_policy(config: DeployConfig, actuator_list: list[Actuator]) -> Non
 
     kos_client = pykos.KOS(ip=config.ip, port=config.port)
 
-    model = tf.saved_model.load(config.model_path)
+    model = tf.saved_model.load(config.policy_path)
 
     # Warm up model
     logger.info("Warming up model...")
@@ -463,7 +466,7 @@ async def run_policy(config: DeployConfig, actuator_list: list[Actuator]) -> Non
 
 async def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("model_path", type=str)
+    parser.add_argument("policy_path", type=str)
     parser.add_argument("--action-scale", type=float, default=0.1)
     parser.add_argument("--run-mode", type=str, default="sim")
     parser.add_argument("--joystick-enabled", action="store_true")
@@ -473,6 +476,7 @@ async def main() -> None:
     parser.add_argument("--port", type=int, default=50051)
     parser.add_argument("--log-dir", type=str, default="rollouts")
     parser.add_argument("--save-plots", action="store_true")
+    parser.add_argument("--metadata", type=str, default="kbot-v2")
     parser.add_argument("--no-cache", action="store_true")
     args = parser.parse_args()
 
@@ -482,7 +486,7 @@ async def main() -> None:
 
     logger.info("Args: %s", config)
 
-    actuator_list = await get_metadata(no_cache=config.no_cache)
+    actuator_list = await get_metadata(model_name_or_dir=config.metadata, no_cache=config.no_cache)
 
     await run_policy(config, actuator_list)
 
