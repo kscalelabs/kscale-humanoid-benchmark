@@ -75,6 +75,7 @@ async def get_metadata(no_cache: bool = False) -> list[Actuator]:
         and joint_metadata.soft_torque_limit is not None
     ]
 
+    # Log the actuator configs
     table_data = [
         {
             "name": ac.joint_name,
@@ -143,7 +144,6 @@ class DeployConfig:
     log_dir: str = field(default="rollouts", metadata={"help": "Directory to save rollouts"})
     save_plots: bool = field(default=False, metadata={"help": "Whether to save plots"})
     # Policy parameters
-    gait: float = field(default=1.25, metadata={"help": "Gait of the policy"})
     dt: float = field(default=0.02, metadata={"help": "Timestep of the policy"})
     rnn_carry_shape: tuple[int, int] = field(
         default=(5, 128), metadata={"help": "Shape of the RNN carry. (num_layers, hidden_size)"}
@@ -179,13 +179,10 @@ class RolloutDict(TypedDict):
 
 
 async def run_policy(config: DeployConfig, actuator_list: list[Actuator]) -> None:
-    phase = np.array([0, np.pi])
 
     async def get_obs(kos_client: pykos.KOS) -> dict:
-        nonlocal phase
-        actuator_states, imu, quaternion = await asyncio.gather(
+        actuator_states, quaternion = await asyncio.gather(
             kos_client.actuator.get_actuators_state([ac.actuator_id for ac in actuator_list]),
-            kos_client.imu.get_imu_values(),
             kos_client.imu.get_quaternion(),
         )
 
@@ -200,23 +197,15 @@ async def run_policy(config: DeployConfig, actuator_list: list[Actuator]) -> Non
         vel_obs = np.deg2rad(np.array([state_dict_vel[ac.actuator_id] for ac in sorted_actuator_list]))
 
         # IMU observations
-        imu_gyro = np.array([imu.gyro_x, imu.gyro_y, imu.gyro_z])
         projected_gravity = rotate_vector_by_quat(
             np.array([0, 0, -9.81]),  # type: ignore[arg-type]
             np.array([quaternion.w, quaternion.x, quaternion.y, quaternion.z]),  # type: ignore[arg-type]
             inverse=True,
         )
 
-        # Timestep phase
-        phase += 2 * np.pi * config.gait * config.dt
-        phase = np.fmod(phase + np.pi, 2 * np.pi) - np.pi
-        phase_vec = np.array([np.cos(phase), np.sin(phase)]).flatten()
-
         return {
-            "timestep_phase": phase_vec,
             "pos_obs": pos_obs,
             "vel_obs": vel_obs,
-            "imu_gyro": imu_gyro,
             "projected_gravity": projected_gravity,
         }
 
@@ -356,9 +345,8 @@ async def run_policy(config: DeployConfig, actuator_list: list[Actuator]) -> Non
                 "obs_imu",
                 "Observed IMU Data",
                 "obs",
-                {"imu_gyro": "Gyro (rad/s)", "projected_gravity": "Gravity (m/s^2)"},
+                {"projected_gravity": "Gravity (m/s^2)"},
             )
-            save_plot("obs_phase", "Observed Timestep Phase", "obs", {"timestep_phase": "Phase (cos/sin)"})
 
             # Plot Commands
             save_plot(
@@ -395,8 +383,6 @@ async def run_policy(config: DeployConfig, actuator_list: list[Actuator]) -> Non
             "units": {
                 "obs": {
                     "Projected gravity": "Units in m/s^2",
-                    "IMU gyro": "Units in rad/s",
-                    "Timestep phase": "",
                     "Position": "Units in rad",
                     "Velocity": "Units in rad/s",
                 },
@@ -438,6 +424,9 @@ async def run_policy(config: DeployConfig, actuator_list: list[Actuator]) -> Non
 
     start_time = time.time()
     target_time = start_time + config.dt
+
+    # Get updated observations
+    obs = await get_obs(kos_client)
 
     try:
         while time.time() - start_time < config.episode_length:
