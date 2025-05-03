@@ -461,7 +461,8 @@ async def run_policy(config: DeployConfig, actuator_list: list[Actuator]) -> Non
     except asyncio.CancelledError:
         logger.info("Episode cancelled")
 
-    await postflight()
+    finally:
+        await postflight()
 
 
 async def main() -> None:
