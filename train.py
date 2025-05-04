@@ -474,16 +474,16 @@ class HumanoidWalkingTask(ksim.PPOTask[HumanoidWalkingTaskConfig]):
             # Normalization penalties.
             ksim.ActionInBoundsReward.create(physics_model, scale=0.01),
             ksim.ActionSmoothnessPenalty(scale=-0.01),
-            ksim.ActuatorJerkPenalty(ctrl_dt=self.config.ctrl_dt, scale=-0.01),
-            ksim.ActuatorRelativeForcePenalty.create(physics_model, scale=-0.01),
-            ksim.AngularVelocityPenalty(index="x", scale=-0.005),
-            ksim.AngularVelocityPenalty(index="y", scale=-0.005),
-            ksim.AngularVelocityPenalty(index="z", scale=-0.005),
-            ksim.LinearVelocityPenalty(index="y", scale=-0.005),
-            ksim.LinearVelocityPenalty(index="z", scale=-0.005),
+            ksim.ActuatorJerkPenalty(ctrl_dt=self.config.ctrl_dt, scale=-0.001),
+            ksim.ActuatorRelativeForcePenalty.create(physics_model, scale=-0.001),
+            ksim.AngularVelocityPenalty(index="x", scale=-0.0005),
+            ksim.AngularVelocityPenalty(index="y", scale=-0.0005),
+            ksim.AngularVelocityPenalty(index="z", scale=-0.0005),
+            ksim.LinearVelocityPenalty(index="y", scale=-0.0005),
+            ksim.LinearVelocityPenalty(index="z", scale=-0.0005),
             # Bespoke rewards.
-            BentArmPenalty.create(physics_model, scale=-0.05),
-            StraightLegPenalty.create(physics_model, scale=-0.05),
+            BentArmPenalty.create(physics_model, scale=-0.01),
+            StraightLegPenalty.create(physics_model, scale=-0.01),
         ]
 
     def get_terminations(self, physics_model: ksim.PhysicsModel) -> list[ksim.Termination]:
