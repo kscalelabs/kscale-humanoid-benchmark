@@ -47,14 +47,6 @@ ZEROS: list[tuple[str, float]] = [
     ("dof_left_ankle_02", math.radians(-25.0)),
 ]
 
-# These are the torques we clip outputs to when deploying the policy.
-MAX_TORQUE = {
-    "00": 1.0,  # 00 motor
-    "02": 13.0,  # 02 motor
-    "03": 48.0,  # 03 motor
-    "04": 96.0,  # 04 motor
-}
-
 
 @attrs.define(frozen=True, kw_only=True)
 class BentArmPenalty(ksim.Reward):
@@ -374,32 +366,6 @@ class HumanoidWalkingTask(ksim.PPOTask[HumanoidWalkingTaskConfig]):
         return ksim.MITPositionActuators(
             physics_model=physics_model,
             joint_name_to_metadata=metadata,
-            ctrl_clip=[
-                # right arm
-                MAX_TORQUE["03"],
-                MAX_TORQUE["03"],
-                MAX_TORQUE["02"],
-                MAX_TORQUE["02"],
-                MAX_TORQUE["00"],
-                # left arm
-                MAX_TORQUE["03"],
-                MAX_TORQUE["03"],
-                MAX_TORQUE["02"],
-                MAX_TORQUE["02"],
-                MAX_TORQUE["00"],
-                # right leg
-                MAX_TORQUE["04"],
-                MAX_TORQUE["03"],
-                MAX_TORQUE["03"],
-                MAX_TORQUE["04"],
-                MAX_TORQUE["02"],
-                # left leg
-                MAX_TORQUE["04"],
-                MAX_TORQUE["03"],
-                MAX_TORQUE["03"],
-                MAX_TORQUE["04"],
-                MAX_TORQUE["02"],
-            ],
         )
 
     def get_physics_randomizers(self, physics_model: ksim.PhysicsModel) -> list[ksim.PhysicsRandomizer]:
