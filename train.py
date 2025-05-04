@@ -49,16 +49,39 @@ ZEROS: list[tuple[str, float]] = [
 
 
 @attrs.define(frozen=True, kw_only=True)
-class BentArmPenalty(ksim.Reward):
-    arm_indices: tuple[int, ...] = attrs.field()
-    arm_targets: tuple[float, ...] = attrs.field()
+class JointPositionPenalty(ksim.Reward):
+    joint_indices: tuple[int, ...] = attrs.field()
+    joint_targets: tuple[float, ...] = attrs.field()
 
     def get_reward(self, trajectory: ksim.Trajectory) -> Array:
-        qpos = trajectory.qpos[..., self.arm_indices]
-        qpos_targets = jnp.array(self.arm_targets)
+        qpos = trajectory.qpos[..., self.joint_indices]
+        qpos_targets = jnp.array(self.joint_targets)
         qpos_diff = qpos - qpos_targets
         return xax.get_norm(qpos_diff, "l1").mean(axis=-1)
 
+    @classmethod
+    def _create(
+        cls,
+        names: list[str],
+        model: ksim.PhysicsModel,
+        scale: float,
+        scale_by_curriculum: bool = False,
+    ) -> Self:
+        qpos_mapping = ksim.get_qpos_data_idxs_by_name(model)
+        zeros = {k: v for k, v in ZEROS}
+        joint_indices = [qpos_mapping[name][0] for name in names]
+        joint_targets = [zeros[name] for name in names]
+
+        return cls(
+            joint_indices=tuple(joint_indices),
+            joint_targets=tuple(joint_targets),
+            scale=scale,
+            scale_by_curriculum=scale_by_curriculum,
+        )
+
+
+@attrs.define(frozen=True, kw_only=True)
+class BentArmPenalty(JointPositionPenalty):
     @classmethod
     def create(
         cls,
@@ -66,28 +89,40 @@ class BentArmPenalty(ksim.Reward):
         scale: float,
         scale_by_curriculum: bool = False,
     ) -> Self:
-        qpos_mapping = ksim.get_qpos_data_idxs_by_name(model)
+        return cls._create(
+            names=[
+                "dof_right_shoulder_pitch_03",
+                "dof_right_shoulder_roll_03",
+                "dof_right_shoulder_yaw_02",
+                "dof_right_elbow_02",
+                "dof_right_wrist_00",
+                "dof_left_shoulder_pitch_03",
+                "dof_left_shoulder_roll_03",
+                "dof_left_shoulder_yaw_02",
+                "dof_left_elbow_02",
+                "dof_left_wrist_00",
+            ],
+            model=model,
+            scale=scale,
+            scale_by_curriculum=scale_by_curriculum,
+        )
 
-        names = [
-            "dof_right_shoulder_pitch_03",
-            "dof_right_shoulder_roll_03",
-            "dof_right_shoulder_yaw_02",
-            "dof_right_elbow_02",
-            "dof_right_wrist_00",
-            "dof_left_shoulder_pitch_03",
-            "dof_left_shoulder_roll_03",
-            "dof_left_shoulder_yaw_02",
-            "dof_left_elbow_02",
-            "dof_left_wrist_00",
-        ]
 
-        zeros = {k: v for k, v in ZEROS}
-        arm_indices = [qpos_mapping[name][0] for name in names]
-        arm_targets = [zeros[name] for name in names]
-
-        return cls(
-            arm_indices=tuple(arm_indices),
-            arm_targets=tuple(arm_targets),
+@attrs.define(frozen=True, kw_only=True)
+class StraightLegPenalty(JointPositionPenalty):
+    @classmethod
+    def create(
+        cls,
+        model: ksim.PhysicsModel,
+        scale: float,
+        scale_by_curriculum: bool = False,
+    ) -> Self:
+        return cls._create(
+            names=[
+                "dof_left_hip_yaw_03",
+                "dof_right_hip_yaw_03",
+            ],
+            model=model,
             scale=scale,
             scale_by_curriculum=scale_by_curriculum,
         )
@@ -437,15 +472,16 @@ class HumanoidWalkingTask(ksim.PPOTask[HumanoidWalkingTaskConfig]):
             # Normalization penalties.
             ksim.ActionInBoundsReward.create(physics_model, scale=0.01),
             ksim.ActionSmoothnessPenalty(scale=-0.01),
-            ksim.ActuatorJerkPenalty(ctrl_dt=self.config.ctrl_dt, scale=-0.001),
-            ksim.ActuatorRelativeForcePenalty.create(physics_model, scale=-0.001),
-            ksim.AngularVelocityPenalty(index="x", scale=-0.0005),
-            ksim.AngularVelocityPenalty(index="y", scale=-0.0005),
-            ksim.AngularVelocityPenalty(index="z", scale=-0.0005),
-            ksim.LinearVelocityPenalty(index="y", scale=-0.0005),
-            ksim.LinearVelocityPenalty(index="z", scale=-0.0005),
+            ksim.ActuatorJerkPenalty(ctrl_dt=self.config.ctrl_dt, scale=-0.01),
+            ksim.ActuatorRelativeForcePenalty.create(physics_model, scale=-0.01),
+            ksim.AngularVelocityPenalty(index="x", scale=-0.005),
+            ksim.AngularVelocityPenalty(index="y", scale=-0.005),
+            ksim.AngularVelocityPenalty(index="z", scale=-0.005),
+            ksim.LinearVelocityPenalty(index="y", scale=-0.005),
+            ksim.LinearVelocityPenalty(index="z", scale=-0.005),
             # Bespoke rewards.
-            BentArmPenalty.create(physics_model, scale=-0.01),
+            BentArmPenalty.create(physics_model, scale=-0.05),
+            StraightLegPenalty.create(physics_model, scale=-0.05),
         ]
 
     def get_terminations(self, physics_model: ksim.PhysicsModel) -> list[ksim.Termination]:
