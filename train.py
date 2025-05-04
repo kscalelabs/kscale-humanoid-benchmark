@@ -348,11 +348,11 @@ class HumanoidWalkingTask(ksim.PPOTask[HumanoidWalkingTaskConfig]):
         return optimizer
 
     def get_mujoco_model(self) -> mujoco.MjModel:
-        mjcf_path = asyncio.run(ksim.get_mujoco_model_path("kbot-v2-feet", name="robot"))
+        mjcf_path = asyncio.run(ksim.get_mujoco_model_path("kbot", name="robot"))
         return mujoco_scenes.mjcf.load_mjmodel(mjcf_path, scene="smooth")
 
     def get_mujoco_model_metadata(self, mj_model: mujoco.MjModel) -> dict[str, JointMetadataOutput]:
-        metadata = asyncio.run(ksim.get_mujoco_model_metadata("kbot-v2-feet"))
+        metadata = asyncio.run(ksim.get_mujoco_model_metadata("kbot"))
         if metadata.joint_name_to_metadata is None:
             raise ValueError("Joint metadata is not available")
         return metadata.joint_name_to_metadata
