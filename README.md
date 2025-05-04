@@ -14,6 +14,10 @@
 
 You can use this repository as a GitHub template or as a Google Colab.
 
+### Google Colab
+
+You can quickly try out the humanoid benchmark by running the [training notebook](https://colab.research.google.com/github/kscalelabs/kscale-humanoid-benchmark/blob/master/train.ipynb) in Google Colab.
+
 ### Template
 
 1. Read through the [current leaderboard](https://url.kscale.dev/leaderboard) submissions and through the [ksim examples](https://github.com/kscalelabs/ksim/tree/master/examples)
@@ -58,9 +62,6 @@ python -m deploy
 12. Wait for one of us to run it on the real robot - this should take about a day
 13. Voila! Your name will now appear on our [leaderboard](https://url.kscale.dev/leaderboard)
 
-### Google Colab
-
-You can also quickly try out the humanoid benchmark by running the [training notebook](https://colab.research.google.com/github/kscalelabs/kscale-humanoid-benchmark/blob/master/train.ipynb) in Google Colab.
 
 ## Troubleshooting
 
