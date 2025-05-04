@@ -1,7 +1,0 @@
-# requirements.txt
-
-ksim
-kos-sim
-tensorflow
-kscale
-maa

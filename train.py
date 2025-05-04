@@ -3,8 +3,7 @@
 import asyncio
 import math
 from dataclasses import dataclass
-from pathlib import Path
-from typing import Callable, Generic, Self, TypeVar
+from typing import Self
 
 import attrs
 import distrax
@@ -19,38 +18,37 @@ import optax
 import xax
 from jaxtyping import Array, PRNGKeyArray
 from kscale.web.gen.api import JointMetadataOutput
-from xax.nn.export import export as xax_export
 
 NUM_JOINTS = 20
 NUM_ACTOR_INPUTS = 43
 NUM_CRITIC_INPUTS = 444
 
-
-BIASES: list[float] = [
-    0.0,  # dof_right_shoulder_pitch_03
-    math.radians(-10.0),  # dof_right_shoulder_roll_03
-    0.0,  # dof_right_shoulder_yaw_02
-    math.radians(90.0),  # dof_right_elbow_02
-    0.0,  # dof_right_wrist_00
-    0.0,  # dof_left_shoulder_pitch_03
-    math.radians(10.0),  # dof_left_shoulder_roll_03
-    0.0,  # dof_left_shoulder_yaw_02
-    math.radians(-90.0),  # dof_left_elbow_02
-    0.0,  # dof_left_wrist_00
-    math.radians(-25.0),  # dof_right_hip_pitch_04
-    0.0,  # dof_right_hip_roll_03
-    0.0,  # dof_right_hip_yaw_03
-    math.radians(-50.0),  # dof_right_knee_04
-    math.radians(25.0),  # dof_right_ankle_02
-    math.radians(25.0),  # dof_left_hip_pitch_04
-    0.0,  # dof_left_hip_roll_03
-    0.0,  # dof_left_hip_yaw_03
-    math.radians(50.0),  # dof_left_knee_04
-    math.radians(-25.0),  # dof_left_ankle_02
+# These are in the order of the neural network outputs.
+ZEROS: list[tuple[str, float]] = [
+    ("dof_right_shoulder_pitch_03", 0.0),
+    ("dof_right_shoulder_roll_03", math.radians(-10.0)),
+    ("dof_right_shoulder_yaw_02", 0.0),
+    ("dof_right_elbow_02", math.radians(90.0)),
+    ("dof_right_wrist_00", 0.0),
+    ("dof_left_shoulder_pitch_03", 0.0),
+    ("dof_left_shoulder_roll_03", math.radians(10.0)),
+    ("dof_left_shoulder_yaw_02", 0.0),
+    ("dof_left_elbow_02", math.radians(-90.0)),
+    ("dof_left_wrist_00", 0.0),
+    ("dof_right_hip_pitch_04", math.radians(-25.0)),
+    ("dof_right_hip_roll_03", 0.0),
+    ("dof_right_hip_yaw_03", 0.0),
+    ("dof_right_knee_04", math.radians(-50.0)),
+    ("dof_right_ankle_02", math.radians(25.0)),
+    ("dof_left_hip_pitch_04", math.radians(25.0)),
+    ("dof_left_hip_roll_03", 0.0),
+    ("dof_left_hip_yaw_03", 0.0),
+    ("dof_left_knee_04", math.radians(50.0)),
+    ("dof_left_ankle_02", math.radians(-25.0)),
 ]
 
 
-@attrs.define
+@attrs.define(frozen=True, kw_only=True)
 class BentArmPenalty(ksim.Reward):
     arm_indices: tuple[int, ...] = attrs.field()
     arm_targets: tuple[float, ...] = attrs.field()
@@ -70,21 +68,22 @@ class BentArmPenalty(ksim.Reward):
     ) -> Self:
         qpos_mapping = ksim.get_qpos_data_idxs_by_name(model)
 
-        names_to_offsets = [
-            ("dof_right_shoulder_pitch_03", 0.0),
-            ("dof_right_shoulder_roll_03", math.radians(-10.0)),
-            ("dof_right_shoulder_yaw_02", 0.0),
-            ("dof_right_elbow_02", math.radians(90)),
-            ("dof_right_wrist_00", 0.0),
-            ("dof_left_shoulder_pitch_03", 0.0),
-            ("dof_left_shoulder_roll_03", math.radians(10.0)),
-            ("dof_left_shoulder_yaw_02", 0.0),
-            ("dof_left_elbow_02", math.radians(-90)),
-            ("dof_left_wrist_00", 0.0),
+        names = [
+            "dof_right_shoulder_pitch_03",
+            "dof_right_shoulder_roll_03",
+            "dof_right_shoulder_yaw_02",
+            "dof_right_elbow_02",
+            "dof_right_wrist_00",
+            "dof_left_shoulder_pitch_03",
+            "dof_left_shoulder_roll_03",
+            "dof_left_shoulder_yaw_02",
+            "dof_left_elbow_02",
+            "dof_left_wrist_00",
         ]
 
-        arm_indices = [qpos_mapping[name][0] for name, _ in names_to_offsets]
-        arm_targets = [offset for _, offset in names_to_offsets]
+        zeros = {k: v for k, v in ZEROS}
+        arm_indices = [qpos_mapping[name][0] for name in names]
+        arm_targets = [zeros[name] for name in names]
 
         return cls(
             arm_indices=tuple(arm_indices),
@@ -111,6 +110,8 @@ class Actor(eqx.Module):
         self,
         key: PRNGKeyArray,
         *,
+        num_inputs: int,
+        num_outputs: int,
         min_std: float,
         max_std: float,
         var_scale: float,
@@ -118,9 +119,6 @@ class Actor(eqx.Module):
         num_mixtures: int,
         depth: int,
     ) -> None:
-        num_inputs = NUM_ACTOR_INPUTS
-        num_outputs = NUM_JOINTS
-
         # Project input to hidden size
         key, input_proj_key = jax.random.split(key)
         self.input_proj = eqx.nn.Linear(
@@ -170,13 +168,14 @@ class Actor(eqx.Module):
         std_nm = out_n[..., slice_len : slice_len * 2].reshape(NUM_JOINTS, self.num_mixtures)
         logits_nm = out_n[..., slice_len * 2 :].reshape(NUM_JOINTS, self.num_mixtures)
 
-        # Add biases to the mean.
-        mean_nm = mean_nm + jnp.array(BIASES)[:, None]
-
         # Softplus and clip to ensure positive standard deviations.
         std_nm = jnp.clip((jax.nn.softplus(std_nm) + self.min_std) * self.var_scale, max=self.max_std)
 
+        # Apply bias to the means.
+        mean_nm = mean_nm + jnp.array([v for _, v in ZEROS])[:, None]
+
         dist_n = ksim.MixtureOfGaussians(means_nm=mean_nm, stds_nm=std_nm, logits_nm=logits_nm)
+
         return dist_n, jnp.stack(out_carries, axis=0)
 
 
@@ -244,6 +243,8 @@ class Model(eqx.Module):
         self,
         key: PRNGKeyArray,
         *,
+        num_inputs: int,
+        num_outputs: int,
         min_std: float,
         max_std: float,
         hidden_size: int,
@@ -252,6 +253,8 @@ class Model(eqx.Module):
     ) -> None:
         self.actor = Actor(
             key,
+            num_inputs=num_inputs,
+            num_outputs=num_outputs,
             min_std=min_std,
             max_std=max_std,
             var_scale=0.5,
@@ -283,16 +286,14 @@ class HumanoidWalkingTaskConfig(ksim.PPOConfig):
         value=5,
         help="The number of mixtures for the actor.",
     )
-
-    # Checkpoint parameters.
-    export_for_inference: bool = xax.field(
-        value=False,
-        help="Whether to export the model for inference.",
+    scale: float = xax.field(
+        value=0.1,
+        help="The maximum position delta on each step, in radians.",
     )
 
     # Optimizer parameters.
     learning_rate: float = xax.field(
-        value=1e-3,
+        value=3e-4,
         help="Learning rate for PPO.",
     )
     max_grad_norm: float = xax.field(
@@ -300,7 +301,7 @@ class HumanoidWalkingTaskConfig(ksim.PPOConfig):
         help="Maximum gradient norm for clipping.",
     )
     adam_weight_decay: float = xax.field(
-        value=0.0,
+        value=1e-5,
         help="Weight decay for the Adam optimizer.",
     )
 
@@ -321,6 +322,10 @@ class HumanoidWalkingTaskConfig(ksim.PPOConfig):
         value=50,
         help="The minimum number of steps to wait before changing the curriculum level.",
     )
+    min_curriculum_level: float = xax.field(
+        value=0.0,
+        help="The minimum curriculum level to use.",
+    )
 
     # Rendering parameters.
     render_track_body_id: int | None = xax.field(
@@ -329,10 +334,7 @@ class HumanoidWalkingTaskConfig(ksim.PPOConfig):
     )
 
 
-Config = TypeVar("Config", bound=HumanoidWalkingTaskConfig)
-
-
-class HumanoidWalkingTask(ksim.PPOTask[Config], Generic[Config]):
+class HumanoidWalkingTask(ksim.PPOTask[HumanoidWalkingTaskConfig]):
     def get_optimizer(self) -> optax.GradientTransformation:
         optimizer = optax.chain(
             optax.clip_by_global_norm(self.config.max_grad_norm),
@@ -346,11 +348,11 @@ class HumanoidWalkingTask(ksim.PPOTask[Config], Generic[Config]):
         return optimizer
 
     def get_mujoco_model(self) -> mujoco.MjModel:
-        mjcf_path = asyncio.run(ksim.get_mujoco_model_path("kbot-v2-feet", name="robot"))
+        mjcf_path = asyncio.run(ksim.get_mujoco_model_path("kbot", name="robot"))
         return mujoco_scenes.mjcf.load_mjmodel(mjcf_path, scene="smooth")
 
     def get_mujoco_model_metadata(self, mj_model: mujoco.MjModel) -> dict[str, JointMetadataOutput]:
-        metadata = asyncio.run(ksim.get_mujoco_model_metadata("kbot-v2-feet"))
+        metadata = asyncio.run(ksim.get_mujoco_model_metadata("kbot"))
         if metadata.joint_name_to_metadata is None:
             raise ValueError("Joint metadata is not available")
         return metadata.joint_name_to_metadata
@@ -369,29 +371,29 @@ class HumanoidWalkingTask(ksim.PPOTask[Config], Generic[Config]):
     def get_physics_randomizers(self, physics_model: ksim.PhysicsModel) -> list[ksim.PhysicsRandomizer]:
         return [
             ksim.StaticFrictionRandomizer(),
-            ksim.FloorFrictionRandomizer.from_geom_name(physics_model, "floor", scale_lower=0.95, scale_upper=1.05),
+            ksim.FloorFrictionRandomizer.from_geom_name(physics_model, "floor", scale_lower=0.8, scale_upper=1.2),
             ksim.ArmatureRandomizer(),
-            ksim.MassMultiplicationRandomizer.from_body_name(physics_model, "Torso_Side_Right"),
+            ksim.AllBodiesMassMultiplicationRandomizer(scale_lower=0.95, scale_upper=1.05),
             ksim.JointDampingRandomizer(),
-            ksim.JointZeroPositionRandomizer(),
+            ksim.JointZeroPositionRandomizer(scale_lower=math.radians(-2), scale_upper=math.radians(2)),
         ]
 
     def get_events(self, physics_model: ksim.PhysicsModel) -> list[ksim.Event]:
         return [
             ksim.PushEvent(
-                x_force=1.0,
-                y_force=1.0,
-                z_force=0.0,
+                x_force=1.5,
+                y_force=1.5,
+                z_force=0.1,
                 x_angular_force=0.1,
                 y_angular_force=0.1,
                 z_angular_force=0.3,
-                interval_range=(0.25, 0.75),
+                interval_range=(0.5, 4.0),
             ),
         ]
 
     def get_resets(self, physics_model: ksim.PhysicsModel) -> list[ksim.Reset]:
         return [
-            ksim.RandomJointPositionReset(),
+            ksim.RandomJointPositionReset.create(physics_model, {k: v for k, v in ZEROS}, scale=0.1),
             ksim.RandomJointVelocityReset(),
         ]
 
@@ -427,21 +429,23 @@ class HumanoidWalkingTask(ksim.PPOTask[Config], Generic[Config]):
         return []
 
     def get_rewards(self, physics_model: ksim.PhysicsModel) -> list[ksim.Reward]:
-        ctrl_dt = self.config.ctrl_dt
-
         return [
             # Standard rewards.
             ksim.StayAliveReward(scale=1.0),
             ksim.NaiveForwardReward(clip_min=0.0, clip_max=0.5, scale=1.0),
             ksim.UprightReward(index="x", inverted=False, scale=0.1),
-            # Normalization penalties (grow with curriculum).
+            # Normalization penalties.
+            ksim.ActionInBoundsReward.create(physics_model, scale=0.01),
             ksim.ActionSmoothnessPenalty(scale=-0.01),
-            ksim.ActuatorForcePenalty(scale=-0.001),
-            ksim.BaseJerkZPenalty(ctrl_dt=ctrl_dt, scale=-0.001),
-            ksim.LinearVelocityPenalty(index="z", scale=-0.001),
-            ksim.AngularVelocityPenalty(index="z", scale=-0.001),
+            ksim.ActuatorJerkPenalty(ctrl_dt=self.config.ctrl_dt, scale=-0.001),
+            ksim.ActuatorRelativeForcePenalty.create(physics_model, scale=-0.001),
+            ksim.AngularVelocityPenalty(index="x", scale=-0.0005),
+            ksim.AngularVelocityPenalty(index="y", scale=-0.0005),
+            ksim.AngularVelocityPenalty(index="z", scale=-0.0005),
+            ksim.LinearVelocityPenalty(index="y", scale=-0.0005),
+            ksim.LinearVelocityPenalty(index="z", scale=-0.0005),
             # Bespoke rewards.
-            BentArmPenalty.create(physics_model, scale=-0.1),
+            BentArmPenalty.create(physics_model, scale=-0.01),
         ]
 
     def get_terminations(self, physics_model: ksim.PhysicsModel) -> list[ksim.Termination]:
@@ -449,7 +453,7 @@ class HumanoidWalkingTask(ksim.PPOTask[Config], Generic[Config]):
             ksim.BadZTermination(unhealthy_z_lower=0.9, unhealthy_z_upper=1.6),
             ksim.PitchTooGreatTermination(max_pitch=math.radians(30)),
             ksim.RollTooGreatTermination(max_roll=math.radians(30)),
-            ksim.FastAccelerationTermination(),
+            ksim.HighVelocityTermination(),
             ksim.FarFromOriginTermination(max_dist=10.0),
         ]
 
@@ -460,11 +464,14 @@ class HumanoidWalkingTask(ksim.PPOTask[Config], Generic[Config]):
             decrease_threshold=self.config.decrease_threshold,
             min_level_steps=self.config.min_level_steps,
             dt=self.config.ctrl_dt,
+            min_level=self.config.min_curriculum_level,
         )
 
     def get_model(self, key: PRNGKeyArray) -> Model:
         return Model(
             key,
+            num_inputs=NUM_ACTOR_INPUTS,
+            num_outputs=NUM_JOINTS,
             min_std=0.01,
             max_std=1.0,
             hidden_size=self.config.hidden_size,
@@ -492,7 +499,9 @@ class HumanoidWalkingTask(ksim.PPOTask[Config], Generic[Config]):
             axis=-1,
         )
 
-        return model.forward(obs_n, carry)
+        action, carry = model.forward(obs_n, carry)
+
+        return action, carry
 
     def run_critic(
         self,
@@ -609,55 +618,6 @@ class HumanoidWalkingTask(ksim.PPOTask[Config], Generic[Config]):
             aux_outputs=None,
         )
 
-    def make_export_model(self, model: Model) -> Callable:
-        """Makes a callable inference function that directly takes a flattened input vector and returns an action.
-
-        Returns:
-            A tuple containing the inference function and the size of the input vector.
-        """
-
-        def model_fn(obs: Array, carry: Array) -> tuple[Array, Array]:
-            dist, carry = model.actor.forward(obs, carry)
-            return dist.mode(), carry
-
-        def batched_model_fn(obs: Array, carry: Array) -> tuple[Array, Array]:
-            return jax.vmap(model_fn)(obs, carry)
-
-        return batched_model_fn
-
-    def on_after_checkpoint_save(self, ckpt_path: Path, state: xax.State | None) -> xax.State | None:
-        if not self.config.export_for_inference:
-            return state
-
-        model: Model = self.load_ckpt(ckpt_path, part="model")[0]
-
-        model_fn = self.make_export_model(model)
-
-        input_shapes = [
-            (NUM_ACTOR_INPUTS,),
-            (
-                self.config.depth,
-                self.config.hidden_size,
-            ),
-        ]
-
-        if state is None:
-            tf_path = ckpt_path.parent / "tf_model"
-        else:
-            tf_path = (
-                ckpt_path.parent / "tf_model"
-                if self.config.only_save_most_recent
-                else ckpt_path.parent / f"tf_model_{state.num_steps}"
-            )
-
-        xax_export(
-            model_fn,
-            input_shapes,
-            tf_path,
-        )
-
-        return state
-
 
 if __name__ == "__main__":
     HumanoidWalkingTask.launch(
@@ -676,6 +636,5 @@ if __name__ == "__main__":
             max_action_latency=0.01,
             # Checkpointing parameters.
             save_every_n_seconds=60,
-            export_for_inference=True,
         ),
     )
