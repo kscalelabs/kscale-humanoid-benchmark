@@ -469,7 +469,7 @@ class HumanoidWalkingTask(ksim.PPOTask[HumanoidWalkingTaskConfig]):
         return [
             # Standard rewards.
             ksim.StayAliveReward(scale=1.0),
-            ksim.NaiveForwardReward(clip_min=0.0, clip_max=1.0, scale=1.0),
+            ksim.NaiveForwardReward(clip_min=0.0, clip_max=0.5, scale=1.0),
             ksim.UprightReward(index="x", inverted=False, scale=0.1),
             # Normalization penalties.
             ksim.ActionInBoundsReward.create(physics_model, scale=0.01),
