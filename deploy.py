@@ -15,6 +15,10 @@ import colorlogging
 import numpy as np
 import pykos
 import tensorflow as tf
+from kscale import K
+from kscale.web.gen.api import RobotURDFMetadataOutput
+from kscale.web.utils import get_robots_dir, should_refresh_file
+from maa import format_table_log
 from xax.nn.geom import rotate_vector_by_quat
 
 logger = logging.getLogger(__name__)
@@ -32,32 +36,77 @@ class Actuator:
     joint_name: str
 
 
-actuator_list: list[Actuator] = [
-    # Right arm (nn_id 0-4)
-    Actuator(actuator_id=21, nn_id=0, kp=40.0, kd=4.0, max_torque=40.0, joint_name="dof_right_shoulder_pitch_03"),
-    Actuator(actuator_id=22, nn_id=1, kp=40.0, kd=4.0, max_torque=40.0, joint_name="dof_right_shoulder_roll_03"),
-    Actuator(actuator_id=23, nn_id=2, kp=30.0, kd=1.0, max_torque=14.0, joint_name="dof_right_shoulder_yaw_02"),
-    Actuator(actuator_id=24, nn_id=3, kp=30.0, kd=1.0, max_torque=14.0, joint_name="dof_right_elbow_02"),
-    Actuator(actuator_id=25, nn_id=4, kp=20.0, kd=0.45, max_torque=1.0, joint_name="dof_right_wrist_00"),
-    # Left arm (nn_id 5-9)
-    Actuator(actuator_id=11, nn_id=5, kp=40.0, kd=4.0, max_torque=40.0, joint_name="dof_left_shoulder_pitch_03"),
-    Actuator(actuator_id=12, nn_id=6, kp=40.0, kd=4.0, max_torque=40.0, joint_name="dof_left_shoulder_roll_03"),
-    Actuator(actuator_id=13, nn_id=7, kp=30.0, kd=1.0, max_torque=14.0, joint_name="dof_left_shoulder_yaw_02"),
-    Actuator(actuator_id=14, nn_id=8, kp=30.0, kd=1.0, max_torque=14.0, joint_name="dof_left_elbow_02"),
-    Actuator(actuator_id=15, nn_id=9, kp=20.0, kd=0.45, max_torque=1.0, joint_name="dof_left_wrist_00"),
-    # Right leg (nn_id 10-14)
-    Actuator(actuator_id=41, nn_id=10, kp=85.0, kd=5.0, max_torque=60.0, joint_name="dof_right_hip_pitch_04"),
-    Actuator(actuator_id=42, nn_id=11, kp=40.0, kd=4.0, max_torque=40.0, joint_name="dof_right_hip_roll_03"),
-    Actuator(actuator_id=43, nn_id=12, kp=40.0, kd=4.0, max_torque=40.0, joint_name="dof_right_hip_yaw_03"),
-    Actuator(actuator_id=44, nn_id=13, kp=85.0, kd=5.0, max_torque=60.0, joint_name="dof_right_knee_04"),
-    Actuator(actuator_id=45, nn_id=14, kp=30.0, kd=1.0, max_torque=14.0, joint_name="dof_right_ankle_02"),
-    # Left leg (nn_id 15-19)
-    Actuator(actuator_id=31, nn_id=15, kp=85.0, kd=5.0, max_torque=60.0, joint_name="dof_left_hip_pitch_04"),
-    Actuator(actuator_id=32, nn_id=16, kp=40.0, kd=4.0, max_torque=40.0, joint_name="dof_left_hip_roll_03"),
-    Actuator(actuator_id=33, nn_id=17, kp=40.0, kd=4.0, max_torque=40.0, joint_name="dof_left_hip_yaw_03"),
-    Actuator(actuator_id=34, nn_id=18, kp=85.0, kd=5.0, max_torque=60.0, joint_name="dof_left_knee_04"),
-    Actuator(actuator_id=35, nn_id=19, kp=30.0, kd=1.0, max_torque=14.0, joint_name="dof_left_ankle_02"),
-]
+async def get_metadata(model_name_or_dir: str, no_cache: bool = False) -> list[Actuator]:
+    # Assumes if the directory exists, it contains a metadata.json file
+    if os.path.exists(Path(model_name_or_dir) / "metadata.json"):
+        metadata_path = Path(model_name_or_dir) / "metadata.json"
+    else:
+        metadata_path = get_robots_dir() / model_name_or_dir / "metadata.json"
+
+    if no_cache or not (metadata_path.exists() and not should_refresh_file(metadata_path)):
+        async with K() as api:
+            robot_class = await api.get_robot_class(model_name_or_dir)
+            if (metadata := robot_class.metadata) is None:
+                raise ValueError(f"No metadata found for {model_name_or_dir}")
+
+        metadata_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(metadata_path, "w") as f:
+            json.dump(metadata.model_dump(), f, indent=2)
+
+    with open(metadata_path, "r") as f:
+        metadata = RobotURDFMetadataOutput.model_validate_json(f.read())
+
+    if metadata.joint_name_to_metadata is None:
+        raise ValueError("Joint metadata is not available")
+
+    joint_name_to_metadata = metadata.joint_name_to_metadata
+
+    actuator_list = [
+        Actuator(
+            actuator_id=joint_metadata.id,
+            nn_id=joint_metadata.nn_id,
+            kp=float(joint_metadata.kp),
+            kd=float(joint_metadata.kd),
+            max_torque=float(joint_metadata.soft_torque_limit),
+            joint_name=joint_name,
+        )
+        for joint_name, joint_metadata in joint_name_to_metadata.items()
+        if joint_metadata.nn_id is not None
+        and joint_metadata.id is not None
+        and joint_metadata.kp is not None
+        and joint_metadata.kd is not None
+        and joint_metadata.soft_torque_limit is not None
+    ]
+
+    # Log the actuator configs
+    table_data = [
+        {
+            "name": ac.joint_name,
+            "id": ac.actuator_id,
+            "nn_id": ac.nn_id,
+            "kp": ac.kp,
+            "kd": ac.kd,
+            "max_torque": ac.max_torque,
+        }
+        for ac in sorted(actuator_list, key=lambda x: x.actuator_id)
+    ]
+
+    legend = [
+        {"data_key": "name", "header": "Joint Name", "width": 30},
+        {"data_key": "id", "header": "ID", "width": 2},
+        {"data_key": "nn_id", "header": "NN ID", "width": 5},
+        {"data_key": "kp", "header": "KP", "width": 6},
+        {"data_key": "kd", "header": "KD", "width": 6},
+        {"data_key": "max_torque", "header": "Max Torque", "width": 10},
+    ]
+
+    table_string = format_table_log(
+        title="Actuator configs", legend=legend, data=table_data, include_row_separators=True
+    )
+    logger.info("\n%s", table_string)
+
+    return actuator_list
+
 
 home_position = {
     21: 0.0,  # dof_right_shoulder_pitch_03
@@ -85,19 +134,20 @@ home_position = {
 
 @dataclass
 class DeployConfig:
-    model_path: str = field(default="", metadata={"help": "Path to the model to deploy"})
+    policy_path: str = field(default="", metadata={"help": "Path to the policy to deploy"})
     action_scale: float = field(default=0.1, metadata={"help": "Scale of the action outputs"})
     run_mode: RunMode = field(default="sim", metadata={"help": "Run mode"})
     joystick_enabled: bool = field(default=False, metadata={"help": "Whether to use joystick"})
     episode_length: int = field(default=10, metadata={"help": "Length of the episode to run in seconds"})
     ip: str = field(default="localhost", metadata={"help": "KOS server IP address"})
     port: int = field(default=50051, metadata={"help": "KOS server port"})
+    metadata: str = field(default="kbot-v2", metadata={"help": "Metadata model / path to use for the policy"})
+    no_cache: bool = field(default=False, metadata={"help": "Whether to use cached metadata"})
     # Logging
     debug: bool = field(default=False, metadata={"help": "Whether to run in debug mode"})
     log_dir: str = field(default="rollouts", metadata={"help": "Directory to save rollouts"})
     save_plots: bool = field(default=False, metadata={"help": "Whether to save plots"})
     # Policy parameters
-    gait: float = field(default=1.25, metadata={"help": "Gait of the policy"})
     dt: float = field(default=0.02, metadata={"help": "Timestep of the policy"})
     rnn_carry_shape: tuple[int, int] = field(
         default=(5, 128), metadata={"help": "Shape of the RNN carry. (num_layers, hidden_size)"}
@@ -132,14 +182,10 @@ class RolloutDict(TypedDict):
     data: dict[str, StepDataDict]
 
 
-async def run_policy(config: DeployConfig) -> None:
-    phase = np.array([0, np.pi])
-
+async def run_policy(config: DeployConfig, actuator_list: list[Actuator]) -> None:
     async def get_obs(kos_client: pykos.KOS) -> dict:
-        nonlocal phase
-        actuator_states, imu, quaternion = await asyncio.gather(
+        actuator_states, quaternion = await asyncio.gather(
             kos_client.actuator.get_actuators_state([ac.actuator_id for ac in actuator_list]),
-            kos_client.imu.get_imu_values(),
             kos_client.imu.get_quaternion(),
         )
 
@@ -154,23 +200,15 @@ async def run_policy(config: DeployConfig) -> None:
         vel_obs = np.deg2rad(np.array([state_dict_vel[ac.actuator_id] for ac in sorted_actuator_list]))
 
         # IMU observations
-        imu_gyro = np.array([imu.gyro_x, imu.gyro_y, imu.gyro_z])
         projected_gravity = rotate_vector_by_quat(
             np.array([0, 0, -9.81]),  # type: ignore[arg-type]
             np.array([quaternion.w, quaternion.x, quaternion.y, quaternion.z]),  # type: ignore[arg-type]
             inverse=True,
         )
 
-        # Timestep phase
-        phase += 2 * np.pi * config.gait * config.dt
-        phase = np.fmod(phase + np.pi, 2 * np.pi) - np.pi
-        phase_vec = np.array([np.cos(phase), np.sin(phase)]).flatten()
-
         return {
-            "timestep_phase": phase_vec,
             "pos_obs": pos_obs,
             "vel_obs": vel_obs,
-            "imu_gyro": imu_gyro,
             "projected_gravity": projected_gravity,
         }
 
@@ -310,9 +348,8 @@ async def run_policy(config: DeployConfig) -> None:
                 "obs_imu",
                 "Observed IMU Data",
                 "obs",
-                {"imu_gyro": "Gyro (rad/s)", "projected_gravity": "Gravity (m/s^2)"},
+                {"projected_gravity": "Gravity (m/s^2)"},
             )
-            save_plot("obs_phase", "Observed Timestep Phase", "obs", {"timestep_phase": "Phase (cos/sin)"})
 
             # Plot Commands
             save_plot(
@@ -349,8 +386,6 @@ async def run_policy(config: DeployConfig) -> None:
             "units": {
                 "obs": {
                     "Projected gravity": "Units in m/s^2",
-                    "IMU gyro": "Units in rad/s",
-                    "Timestep phase": "",
                     "Position": "Units in rad",
                     "Velocity": "Units in rad/s",
                 },
@@ -372,7 +407,7 @@ async def run_policy(config: DeployConfig) -> None:
 
     kos_client = pykos.KOS(ip=config.ip, port=config.port)
 
-    model = tf.saved_model.load(config.model_path)
+    model = tf.saved_model.load(config.policy_path)
 
     # Warm up model
     logger.info("Warming up model...")
@@ -392,6 +427,9 @@ async def run_policy(config: DeployConfig) -> None:
 
     start_time = time.time()
     target_time = start_time + config.dt
+
+    # Get updated observations
+    obs = await get_obs(kos_client)
 
     try:
         while time.time() - start_time < config.episode_length:
@@ -423,12 +461,13 @@ async def run_policy(config: DeployConfig) -> None:
     except asyncio.CancelledError:
         logger.info("Episode cancelled")
 
-    await postflight()
+    finally:
+        await postflight()
 
 
 async def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("model_path", type=str)
+    parser.add_argument("policy_path", type=str)
     parser.add_argument("--action-scale", type=float, default=0.1)
     parser.add_argument("--run-mode", type=str, default="sim")
     parser.add_argument("--joystick-enabled", action="store_true")
@@ -438,6 +477,8 @@ async def main() -> None:
     parser.add_argument("--port", type=int, default=50051)
     parser.add_argument("--log-dir", type=str, default="rollouts")
     parser.add_argument("--save-plots", action="store_true")
+    parser.add_argument("--metadata", type=str, default="kbot")
+    parser.add_argument("--no-cache", action="store_true")
     args = parser.parse_args()
 
     colorlogging.configure(level=logging.DEBUG if args.debug else logging.INFO)
@@ -446,7 +487,9 @@ async def main() -> None:
 
     logger.info("Args: %s", config)
 
-    await run_policy(config)
+    actuator_list = await get_metadata(model_name_or_dir=config.metadata, no_cache=config.no_cache)
+
+    await run_policy(config, actuator_list)
 
 
 if __name__ == "__main__":
