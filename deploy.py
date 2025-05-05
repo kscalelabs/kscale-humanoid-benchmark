@@ -429,6 +429,7 @@ async def run_policy(config: DeployConfig, actuator_list: list[Actuator]) -> Non
     if config.run_mode == "real":
         for i in range(5, -1, -1):
             logger.info("Starting rollout in %d...", i)
+            await asyncio.sleep(1)
     else:
         await reset_sim(kos_client)
 
