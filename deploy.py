@@ -436,11 +436,13 @@ async def run_policy(config: DeployConfig, actuator_list: list[Actuator]) -> Non
     start_time = time.time()
     target_time = start_time + config.dt
 
-    # Get updated observations
-    obs = await get_obs(kos_client)
-
     try:
         while time.time() - start_time < config.episode_length:
+            obs, cmd = await asyncio.gather(
+                get_obs(kos_client),
+                get_command(config.joystick_enabled),
+            )
+
             action, carry = model.infer(obs_to_vec(obs, cmd), carry)
 
             action_array = np.array(action).reshape(-1)
@@ -452,11 +454,7 @@ async def run_policy(config: DeployConfig, actuator_list: list[Actuator]) -> Non
                 action=action_array.tolist(),
             )
 
-            obs, cmd, _ = await asyncio.gather(
-                get_obs(kos_client),
-                get_command(config.joystick_enabled),
-                send_action(action_array, kos_client),
-            )
+            await send_action(action_array, kos_client)
 
             if time.time() > target_time:
                 logger.warning("Loop overran by %f seconds", time.time() - target_time)
