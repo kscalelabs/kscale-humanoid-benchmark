@@ -419,6 +419,13 @@ async def run_policy(config: DeployConfig, actuator_list: list[Actuator]) -> Non
     logger.info("Starting preflight...")
     await preflight()
 
+    logger.info("Press 'Enter' to start the rollout...")
+    try:
+        input()
+    except Exception as e:
+        logger.error("Error waiting for user input: %s", e)
+        raise
+
     if config.run_mode == "real":
         for i in range(5, -1, -1):
             logger.info("Starting rollout in %d...", i)
