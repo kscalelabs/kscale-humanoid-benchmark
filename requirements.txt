@@ -6,6 +6,7 @@ ksim
 # Inference dependencies
 kos-sim
 xax[exportable]
+maa
 
 # Jupyter Notebook dependencies
 jupyter
