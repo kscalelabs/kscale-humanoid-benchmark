@@ -412,7 +412,7 @@ class HumanoidWalkingTask(ksim.PPOTask[HumanoidWalkingTaskConfig]):
             ksim.BaseAngularAccelerationObservation(),
             ksim.ProjectedGravityObservation.create(
                 physics_model=physics_model,
-                framequat_name="base_link_quat",
+                framequat_name="imu_site_quat",
                 lag_range=(0.0, 0.5),
             ),
             ksim.ActuatorAccelerationObservation(),
