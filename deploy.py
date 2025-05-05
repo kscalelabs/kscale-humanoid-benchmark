@@ -431,11 +431,11 @@ async def run_policy(config: DeployConfig, actuator_list: list[Actuator]) -> Non
     else:
         await reset_sim(kos_client)
 
-    start_time = time.time()
+    start_time = time.monotonic()
     target_time = start_time + config.dt
 
     try:
-        while time.time() - start_time < config.episode_length:
+        while time.monotonic() - start_time < config.episode_length:
             obs, cmd = await asyncio.gather(
                 get_obs(kos_client),
                 get_command(config.joystick_enabled),
@@ -445,7 +445,7 @@ async def run_policy(config: DeployConfig, actuator_list: list[Actuator]) -> Non
 
             action_array = np.array(action).reshape(-1)
 
-            elapsed_time = time.time() - start_time
+            elapsed_time = time.monotonic() - start_time
             rollout_dict["data"][f"{elapsed_time:.4f}"] = StepDataDict(
                 obs={k: v.tolist() for k, v in obs.items()},
                 cmd={k: v.tolist() for k, v in cmd.items()},
@@ -454,11 +454,11 @@ async def run_policy(config: DeployConfig, actuator_list: list[Actuator]) -> Non
 
             await send_action(action_array, kos_client)
 
-            if time.time() > target_time:
-                logger.warning("Loop overran by %f seconds", time.time() - target_time)
+            if time.monotonic() > target_time:
+                logger.warning("Loop overran by %f seconds", time.monotonic() - target_time)
             else:
-                logger.debug("Sleeping for %f seconds", target_time - time.time())
-                await asyncio.sleep(max(0, target_time - time.time()))
+                logger.debug("Sleeping for %f seconds", target_time - time.monotonic())
+                await asyncio.sleep(max(0, target_time - time.monotonic()))
 
             target_time += config.dt
 
