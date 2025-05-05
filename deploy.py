@@ -36,14 +36,14 @@ class Actuator:
     joint_name: str
 
 
-async def get_metadata(model_name_or_dir: str, no_cache: bool = False) -> list[Actuator]:
+async def get_metadata(model_name_or_dir: str, cache: bool = True) -> list[Actuator]:
     # Assumes if the directory exists, it contains a metadata.json file
     if os.path.exists(Path(model_name_or_dir) / "metadata.json"):
         metadata_path = Path(model_name_or_dir) / "metadata.json"
     else:
         metadata_path = get_robots_dir() / model_name_or_dir / "metadata.json"
 
-    if no_cache or not (metadata_path.exists() and not should_refresh_file(metadata_path)):
+    if not cache or not (metadata_path.exists() and not should_refresh_file(metadata_path)):
         async with K() as api:
             robot_class = await api.get_robot_class(model_name_or_dir)
             if (metadata := robot_class.metadata) is None:
@@ -140,7 +140,7 @@ class DeployConfig:
     ip: str = field(default="localhost", metadata={"help": "KOS server IP address"})
     port: int = field(default=50051, metadata={"help": "KOS server port"})
     metadata: str = field(default="kbot-v2", metadata={"help": "Metadata model / path to use for the policy"})
-    no_cache: bool = field(default=False, metadata={"help": "Whether to use cached metadata"})
+    cache: bool = field(default=True, metadata={"help": "Whether to use cached metadata"})
     # Logging
     debug: bool = field(default=False, metadata={"help": "Whether to run in debug mode"})
     log_dir: str = field(default="rollouts", metadata={"help": "Directory to save rollouts"})
@@ -482,7 +482,7 @@ async def main() -> None:
     parser.add_argument("--log-dir", type=str, default="rollouts")
     parser.add_argument("--save-plots", action="store_true")
     parser.add_argument("--metadata", type=str, default="kbot")
-    parser.add_argument("--no-cache", action="store_true")
+    parser.add_argument("--cache", action="store_true")
     args = parser.parse_args()
 
     colorlogging.configure(level=logging.DEBUG if args.debug else logging.INFO)
@@ -491,7 +491,7 @@ async def main() -> None:
 
     logger.info("Args: %s", config)
 
-    actuator_list = await get_metadata(model_name_or_dir=config.metadata, no_cache=config.no_cache)
+    actuator_list = await get_metadata(model_name_or_dir=config.metadata, cache=config.cache)
 
     await run_policy(config, actuator_list)
 
