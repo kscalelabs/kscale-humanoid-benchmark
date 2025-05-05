@@ -280,7 +280,7 @@ async def run_policy(config: DeployConfig, actuator_list: list[Actuator]) -> Non
         logger.info("Resetting simulation...")
         await kos_client.sim.reset(pos={"x": 0.0, "y": 0.0, "z": 1.01}, quat={"x": 0.0, "y": 0.0, "z": 0.0, "w": 1.0})
 
-    async def preflight() -> None:
+    async def preflight(kos_client: pykos.KOS) -> None:
         os.makedirs(Path(config.log_dir) / config.run_mode, exist_ok=True)
         logger.info("Enabling motors...")
         await enable(kos_client)
@@ -288,7 +288,7 @@ async def run_policy(config: DeployConfig, actuator_list: list[Actuator]) -> Non
         logger.info("Moving to home position...")
         await go_home(kos_client)
 
-    async def postflight() -> None:
+    async def postflight(timing_data: list[float]) -> None:
         datetime_name = datetime.now().strftime("%Y%m%d_%H%M%S")
 
         # Create the directory for this specific rollout
@@ -301,6 +301,17 @@ async def run_policy(config: DeployConfig, actuator_list: list[Actuator]) -> Non
             json.dump(rollout_dict, f, indent=2)
 
         logger.info("Rollout data saved to %s", rollout_file)
+
+        if timing_data:
+            timings = np.array(timing_data)
+            logger.info(
+                "timing stats: min=%.6f, max=%.6f, median=%.6f seconds",
+                np.min(timings),
+                np.max(timings),
+                np.median(timings),
+            )
+        else:
+            logger.info("No timing data collected.")
 
         logger.info("Disabling motors...")
         await disable(kos_client)
@@ -403,78 +414,80 @@ async def run_policy(config: DeployConfig, actuator_list: list[Actuator]) -> Non
         "data": {},
     }
 
-    kos_client = pykos.KOS(ip=config.ip, port=config.port)
+    timing_data: list[float] = []
 
-    model = tf.saved_model.load(config.policy_path)
+    async with pykos.KOS(ip=config.ip, port=config.port) as kos_client:
+        model = tf.saved_model.load(config.policy_path)
 
-    # Warm up model
-    logger.info("Warming up model...")
-    obs = await get_obs(kos_client)
-    cmd = await get_command(config.joystick_enabled)
-    carry = np.zeros(config.rnn_carry_shape)[None, :]
-    _ = model.infer(obs_to_vec(obs, cmd), carry)
+        # Warm up model
+        logger.info("Warming up model...")
+        obs = await get_obs(kos_client)
+        cmd = await get_command(config.joystick_enabled)
+        carry = np.zeros(config.rnn_carry_shape)[None, :]
+        _ = model.infer(obs_to_vec(obs, cmd), carry)
 
-    logger.info("Starting preflight...")
-    await preflight()
+        logger.info("Starting preflight...")
+        await preflight(kos_client)
 
-    logger.info("Press 'Enter' to start the rollout...")
-    try:
-        input()
-    except Exception as e:
-        logger.error("Error waiting for user input: %s", e)
-        raise
+        logger.info("Press 'Enter' to start the rollout...")
+        try:
+            input()
+        except Exception as e:
+            logger.error("Error waiting for user input: %s", e)
+            raise
 
-    if config.run_mode == "real":
-        for i in range(5, -1, -1):
-            logger.info("Starting rollout in %d...", i)
-            await asyncio.sleep(1)
-    else:
-        await reset_sim(kos_client)
+        if config.run_mode == "real":
+            for i in range(5, -1, -1):
+                logger.info("Starting rollout in %d...", i)
+                await asyncio.sleep(1)
+        else:
+            await reset_sim(kos_client)
 
-    action_future: asyncio.Task | None = None
+        action_future: asyncio.Task | None = None
 
-    start_time = time.monotonic()
-    target_time = start_time + config.dt
+        start_time = time.monotonic()
+        target_time = start_time + config.dt
 
-    try:
-        while time.monotonic() - start_time < config.episode_length:
-            if action_future is not None and not action_future.done():
-                logger.info("Waiting for previous action to be transmitted...")
-                await action_future
+        try:
+            while time.monotonic() - start_time < config.episode_length:
+                if action_future is not None and not action_future.done():
+                    logger.info("Waiting for previous action to be transmitted...")
+                    await action_future
 
-            obs, cmd = await asyncio.gather(
-                get_obs(kos_client),
-                get_command(config.joystick_enabled),
-            )
+                obs, cmd = await asyncio.gather(
+                    get_obs(kos_client),
+                    get_command(config.joystick_enabled),
+                )
 
-            action, carry = model.infer(obs_to_vec(obs, cmd), carry)
+                action, carry = model.infer(obs_to_vec(obs, cmd), carry)
 
-            action_array = np.array(action).reshape(-1)
+                action_array = np.array(action).reshape(-1)
 
-            elapsed_time = time.monotonic() - start_time
-            rollout_dict["data"][f"{elapsed_time:.4f}"] = StepDataDict(
-                obs={k: v.tolist() for k, v in obs.items()},
-                cmd={k: v.tolist() for k, v in cmd.items()},
-                action=action_array.tolist(),
-            )
+                elapsed_time = time.monotonic() - start_time
+                rollout_dict["data"][f"{elapsed_time:.4f}"] = StepDataDict(
+                    obs={k: v.tolist() for k, v in obs.items()},
+                    cmd={k: v.tolist() for k, v in cmd.items()},
+                    action=action_array.tolist(),
+                )
 
-            action_future = asyncio.create_task(
-                send_action(action_array, kos_client)
-            )
+                # send_action_start = time.perf_counter()
+                action_future = asyncio.create_task(send_action(action_array, kos_client))
+                # send_action_end = time.perf_counter()
+                # timing_data.append(send_action_end - send_action_start)
 
-            if time.monotonic() > target_time:
-                logger.warning("Loop overran by %f seconds", time.monotonic() - target_time)
-            else:
-                logger.debug("Sleeping for %f seconds", target_time - time.monotonic())
-                await asyncio.sleep(max(0, target_time - time.monotonic()))
+                if time.monotonic() > target_time:
+                    logger.warning("Loop overran by %f seconds", time.monotonic() - target_time)
+                else:
+                    logger.debug("Sleeping for %f seconds", target_time - time.monotonic())
+                    await asyncio.sleep(max(0, target_time - time.monotonic()))
 
-            target_time += config.dt
+                target_time += config.dt
 
-    except asyncio.CancelledError:
-        logger.info("Episode cancelled")
+        except asyncio.CancelledError:
+            logger.info("Episode cancelled")
 
-    finally:
-        await postflight()
+        finally:
+            await postflight(timing_data)
 
 
 async def main() -> None:
