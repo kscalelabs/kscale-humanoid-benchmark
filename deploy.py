@@ -431,11 +431,17 @@ async def run_policy(config: DeployConfig, actuator_list: list[Actuator]) -> Non
     else:
         await reset_sim(kos_client)
 
+    action_future: asyncio.Task | None = None
+
     start_time = time.monotonic()
     target_time = start_time + config.dt
 
     try:
         while time.monotonic() - start_time < config.episode_length:
+            if action_future is not None and not action_future.done():
+                logger.info("Waiting for previous action to be transmitted...")
+                await action_future
+
             obs, cmd = await asyncio.gather(
                 get_obs(kos_client),
                 get_command(config.joystick_enabled),
@@ -452,7 +458,9 @@ async def run_policy(config: DeployConfig, actuator_list: list[Actuator]) -> Non
                 action=action_array.tolist(),
             )
 
-            await send_action(action_array, kos_client)
+            action_future = asyncio.create_task(
+                send_action(action_array, kos_client)
+            )
 
             if time.monotonic() > target_time:
                 logger.warning("Loop overran by %f seconds", time.monotonic() - target_time)
