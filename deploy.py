@@ -18,7 +18,7 @@ import tensorflow as tf
 from kscale import K
 from kscale.web.gen.api import RobotURDFMetadataOutput
 from kscale.web.utils import get_robots_dir, should_refresh_file
-from maa import format_table_log
+from tabulate import tabulate
 from xax.nn.geom import rotate_vector_by_quat
 
 logger = logging.getLogger(__name__)
@@ -91,19 +91,17 @@ async def get_metadata(model_name_or_dir: str, no_cache: bool = False) -> list[A
         for ac in sorted(actuator_list, key=lambda x: x.actuator_id)
     ]
 
-    legend = [
-        {"data_key": "name", "header": "Joint Name", "width": 30},
-        {"data_key": "id", "header": "ID", "width": 2},
-        {"data_key": "nn_id", "header": "NN ID", "width": 5},
-        {"data_key": "kp", "header": "KP", "width": 6},
-        {"data_key": "kd", "header": "KD", "width": 6},
-        {"data_key": "max_torque", "header": "Max Torque", "width": 10},
-    ]
+    headers = {
+        "name": "Joint Name",
+        "id": "ID",
+        "nn_id": "NN ID",
+        "kp": "KP",
+        "kd": "KD",
+        "max_torque": "Max Torque",
+    }
 
-    table_string = format_table_log(
-        title="Actuator configs", legend=legend, data=table_data, include_row_separators=True
-    )
-    logger.info("\n%s", table_string)
+    table_string = tabulate(table_data, headers=headers, floatfmt=".2f")
+    logger.info("Actuator configs:\n%s", table_string)
 
     return actuator_list
 
