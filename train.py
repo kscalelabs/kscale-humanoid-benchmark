@@ -460,7 +460,7 @@ class HumanoidWalkingTask(ksim.PPOTask[HumanoidWalkingTaskConfig]):
             # Standard rewards.
             ksim.StayAliveReward(scale=1.0),
             ksim.NaiveForwardReward(clip_min=0.0, clip_max=0.5, scale=1.0),
-            ksim.UprightReward(index="x", inverted=False, scale=0.1),
+            ksim.UprightReward(scale=0.1),
             # Normalization penalties.
             ksim.ActionInBoundsReward.create(physics_model, scale=0.01),
             ksim.AngularVelocityPenalty(index="x", scale=-0.005),
@@ -476,8 +476,7 @@ class HumanoidWalkingTask(ksim.PPOTask[HumanoidWalkingTaskConfig]):
     def get_terminations(self, physics_model: ksim.PhysicsModel) -> list[ksim.Termination]:
         return [
             ksim.BadZTermination(unhealthy_z_lower=0.9, unhealthy_z_upper=1.6),
-            ksim.PitchTooGreatTermination(max_pitch=math.radians(30)),
-            ksim.RollTooGreatTermination(max_roll=math.radians(30)),
+            ksim.NotUprightTermination(max_radians=math.radians(30)),
             ksim.HighVelocityTermination(),
             ksim.FarFromOriginTermination(max_dist=10.0),
         ]
