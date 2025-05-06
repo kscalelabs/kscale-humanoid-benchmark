@@ -15,18 +15,15 @@ import colorlogging
 import numpy as np
 import pykos
 import tensorflow as tf
+from kscale import K
+from kscale.web.gen.api import RobotURDFMetadataOutput
+from kscale.web.utils import get_robots_dir, should_refresh_file
+from tabulate import tabulate
 from xax.nn.geom import rotate_vector_by_quat
 
 logger = logging.getLogger(__name__)
 
 RunMode = Literal["real", "sim"]
-
-MAX_TORQUE = {
-    "00": 1.0,  # 00 motor
-    "02": 13.0,  # 02 motor
-    "03": 48.0,  # 03 motor
-    "04": 96.0,  # 04 motor
-}
 
 
 @dataclass
@@ -39,54 +36,75 @@ class Actuator:
     joint_name: str
 
 
-actuator_list: list[Actuator] = [
-    # Right arm (nn_id 0-4)
-    Actuator(
-        actuator_id=21, nn_id=0, kp=100.0, kd=4.0, max_torque=MAX_TORQUE["03"], joint_name="dof_right_shoulder_pitch_03"
-    ),
-    Actuator(
-        actuator_id=22, nn_id=1, kp=100.0, kd=4.0, max_torque=MAX_TORQUE["03"], joint_name="dof_right_shoulder_roll_03"
-    ),
-    Actuator(
-        actuator_id=23, nn_id=2, kp=40.0, kd=2.0, max_torque=MAX_TORQUE["02"], joint_name="dof_right_shoulder_yaw_02"
-    ),
-    Actuator(actuator_id=24, nn_id=3, kp=40.0, kd=2.0, max_torque=MAX_TORQUE["02"], joint_name="dof_right_elbow_02"),
-    Actuator(actuator_id=25, nn_id=4, kp=20.0, kd=2.0, max_torque=MAX_TORQUE["00"], joint_name="dof_right_wrist_00"),
-    # Left arm (nn_id 5-9)
-    Actuator(
-        actuator_id=11, nn_id=5, kp=100.0, kd=4.0, max_torque=MAX_TORQUE["03"], joint_name="dof_left_shoulder_pitch_03"
-    ),
-    Actuator(
-        actuator_id=12, nn_id=6, kp=100.0, kd=4.0, max_torque=MAX_TORQUE["03"], joint_name="dof_left_shoulder_roll_03"
-    ),
-    Actuator(
-        actuator_id=13, nn_id=7, kp=40.0, kd=2.0, max_torque=MAX_TORQUE["02"], joint_name="dof_left_shoulder_yaw_02"
-    ),
-    Actuator(actuator_id=14, nn_id=8, kp=40.0, kd=2.0, max_torque=MAX_TORQUE["02"], joint_name="dof_left_elbow_02"),
-    Actuator(actuator_id=15, nn_id=9, kp=20.0, kd=2.0, max_torque=MAX_TORQUE["00"], joint_name="dof_left_wrist_00"),
-    # Right leg (nn_id 10-14)
-    Actuator(
-        actuator_id=41, nn_id=10, kp=150.0, kd=8.0, max_torque=MAX_TORQUE["04"], joint_name="dof_right_hip_pitch_04"
-    ),
-    Actuator(
-        actuator_id=42, nn_id=11, kp=200.0, kd=8.0, max_torque=MAX_TORQUE["03"], joint_name="dof_right_hip_roll_03"
-    ),
-    Actuator(
-        actuator_id=43, nn_id=12, kp=100.0, kd=4.0, max_torque=MAX_TORQUE["03"], joint_name="dof_right_hip_yaw_03"
-    ),
-    Actuator(actuator_id=44, nn_id=13, kp=150.0, kd=8.0, max_torque=MAX_TORQUE["04"], joint_name="dof_right_knee_04"),
-    Actuator(actuator_id=45, nn_id=14, kp=40.0, kd=8.0, max_torque=MAX_TORQUE["02"], joint_name="dof_right_ankle_02"),
-    # Left leg (nn_id 15-19)
-    Actuator(
-        actuator_id=31, nn_id=15, kp=150.0, kd=8.0, max_torque=MAX_TORQUE["04"], joint_name="dof_left_hip_pitch_04"
-    ),
-    Actuator(
-        actuator_id=32, nn_id=16, kp=200.0, kd=8.0, max_torque=MAX_TORQUE["03"], joint_name="dof_left_hip_roll_03"
-    ),
-    Actuator(actuator_id=33, nn_id=17, kp=100.0, kd=4.0, max_torque=MAX_TORQUE["03"], joint_name="dof_left_hip_yaw_03"),
-    Actuator(actuator_id=34, nn_id=18, kp=150.0, kd=8.0, max_torque=MAX_TORQUE["04"], joint_name="dof_left_knee_04"),
-    Actuator(actuator_id=35, nn_id=19, kp=40.0, kd=8.0, max_torque=MAX_TORQUE["02"], joint_name="dof_left_ankle_02"),
-]
+async def get_metadata(model_name_or_dir: str, cache: bool = True) -> list[Actuator]:
+    # Assumes if the directory exists, it contains a metadata.json file
+    if os.path.exists(Path(model_name_or_dir) / "metadata.json"):
+        metadata_path = Path(model_name_or_dir) / "metadata.json"
+    else:
+        metadata_path = get_robots_dir() / model_name_or_dir / "metadata.json"
+
+    if not cache or not (metadata_path.exists() and not should_refresh_file(metadata_path)):
+        async with K() as api:
+            robot_class = await api.get_robot_class(model_name_or_dir)
+            if (metadata := robot_class.metadata) is None:
+                raise ValueError(f"No metadata found for {model_name_or_dir}")
+
+        metadata_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(metadata_path, "w") as f:
+            json.dump(metadata.model_dump(), f, indent=2)
+
+    with open(metadata_path, "r") as f:
+        metadata = RobotURDFMetadataOutput.model_validate_json(f.read())
+
+    if metadata.joint_name_to_metadata is None:
+        raise ValueError("Joint metadata is not available")
+
+    joint_name_to_metadata = metadata.joint_name_to_metadata
+
+    actuator_list = [
+        Actuator(
+            actuator_id=joint_metadata.id,
+            nn_id=joint_metadata.nn_id,
+            kp=float(joint_metadata.kp),
+            kd=float(joint_metadata.kd),
+            max_torque=float(joint_metadata.soft_torque_limit),
+            joint_name=joint_name,
+        )
+        for joint_name, joint_metadata in joint_name_to_metadata.items()
+        if joint_metadata.nn_id is not None
+        and joint_metadata.id is not None
+        and joint_metadata.kp is not None
+        and joint_metadata.kd is not None
+        and joint_metadata.soft_torque_limit is not None
+    ]
+
+    # Log the actuator configs
+    table_data = [
+        {
+            "name": ac.joint_name,
+            "id": ac.actuator_id,
+            "nn_id": ac.nn_id,
+            "kp": ac.kp,
+            "kd": ac.kd,
+            "max_torque": ac.max_torque,
+        }
+        for ac in sorted(actuator_list, key=lambda x: x.actuator_id)
+    ]
+
+    headers = {
+        "name": "Joint Name",
+        "id": "ID",
+        "nn_id": "NN ID",
+        "kp": "KP",
+        "kd": "KD",
+        "max_torque": "Max Torque",
+    }
+
+    table_string = tabulate(table_data, headers=headers, floatfmt=".2f")
+    logger.info("Actuator configs:\n%s", table_string)
+
+    return actuator_list
+
 
 home_position = {
     21: 0.0,  # dof_right_shoulder_pitch_03
@@ -114,19 +132,20 @@ home_position = {
 
 @dataclass
 class DeployConfig:
-    model_path: str = field(default="", metadata={"help": "Path to the model to deploy"})
+    policy_path: str = field(default="", metadata={"help": "Path to the policy to deploy"})
     action_scale: float = field(default=0.1, metadata={"help": "Scale of the action outputs"})
     run_mode: RunMode = field(default="sim", metadata={"help": "Run mode"})
     joystick_enabled: bool = field(default=False, metadata={"help": "Whether to use joystick"})
     episode_length: int = field(default=10, metadata={"help": "Length of the episode to run in seconds"})
     ip: str = field(default="localhost", metadata={"help": "KOS server IP address"})
     port: int = field(default=50051, metadata={"help": "KOS server port"})
+    metadata: str = field(default="kbot-v2", metadata={"help": "Metadata model / path to use for the policy"})
+    cache: bool = field(default=True, metadata={"help": "Whether to use cached metadata"})
     # Logging
     debug: bool = field(default=False, metadata={"help": "Whether to run in debug mode"})
     log_dir: str = field(default="rollouts", metadata={"help": "Directory to save rollouts"})
     save_plots: bool = field(default=False, metadata={"help": "Whether to save plots"})
     # Policy parameters
-    gait: float = field(default=1.25, metadata={"help": "Gait of the policy"})
     dt: float = field(default=0.02, metadata={"help": "Timestep of the policy"})
     rnn_carry_shape: tuple[int, int] = field(
         default=(5, 128), metadata={"help": "Shape of the RNN carry. (num_layers, hidden_size)"}
@@ -161,14 +180,10 @@ class RolloutDict(TypedDict):
     data: dict[str, StepDataDict]
 
 
-async def run_policy(config: DeployConfig) -> None:
-    phase = np.array([0, np.pi])
-
+async def run_policy(config: DeployConfig, actuator_list: list[Actuator]) -> None:
     async def get_obs(kos_client: pykos.KOS) -> dict:
-        nonlocal phase
-        actuator_states, imu, quaternion = await asyncio.gather(
+        actuator_states, quaternion = await asyncio.gather(
             kos_client.actuator.get_actuators_state([ac.actuator_id for ac in actuator_list]),
-            kos_client.imu.get_imu_values(),
             kos_client.imu.get_quaternion(),
         )
 
@@ -183,23 +198,15 @@ async def run_policy(config: DeployConfig) -> None:
         vel_obs = np.deg2rad(np.array([state_dict_vel[ac.actuator_id] for ac in sorted_actuator_list]))
 
         # IMU observations
-        imu_gyro = np.array([imu.gyro_x, imu.gyro_y, imu.gyro_z])
         projected_gravity = rotate_vector_by_quat(
             np.array([0, 0, -9.81]),  # type: ignore[arg-type]
             np.array([quaternion.w, quaternion.x, quaternion.y, quaternion.z]),  # type: ignore[arg-type]
             inverse=True,
         )
 
-        # Timestep phase
-        phase += 2 * np.pi * config.gait * config.dt
-        phase = np.fmod(phase + np.pi, 2 * np.pi) - np.pi
-        phase_vec = np.array([np.cos(phase), np.sin(phase)]).flatten()
-
         return {
-            "timestep_phase": phase_vec,
             "pos_obs": pos_obs,
             "vel_obs": vel_obs,
-            "imu_gyro": imu_gyro,
             "projected_gravity": projected_gravity,
         }
 
@@ -273,7 +280,7 @@ async def run_policy(config: DeployConfig) -> None:
         logger.info("Resetting simulation...")
         await kos_client.sim.reset(pos={"x": 0.0, "y": 0.0, "z": 1.01}, quat={"x": 0.0, "y": 0.0, "z": 0.0, "w": 1.0})
 
-    async def preflight() -> None:
+    async def preflight(kos_client: pykos.KOS) -> None:
         os.makedirs(Path(config.log_dir) / config.run_mode, exist_ok=True)
         logger.info("Enabling motors...")
         await enable(kos_client)
@@ -281,7 +288,7 @@ async def run_policy(config: DeployConfig) -> None:
         logger.info("Moving to home position...")
         await go_home(kos_client)
 
-    async def postflight() -> None:
+    async def postflight(timing_data: list[float]) -> None:
         datetime_name = datetime.now().strftime("%Y%m%d_%H%M%S")
 
         # Create the directory for this specific rollout
@@ -294,6 +301,17 @@ async def run_policy(config: DeployConfig) -> None:
             json.dump(rollout_dict, f, indent=2)
 
         logger.info("Rollout data saved to %s", rollout_file)
+
+        if timing_data:
+            timings = np.array(timing_data)
+            logger.info(
+                "timing stats: min=%.6f, max=%.6f, median=%.6f seconds",
+                np.min(timings),
+                np.max(timings),
+                np.median(timings),
+            )
+        else:
+            logger.info("No timing data collected.")
 
         logger.info("Disabling motors...")
         await disable(kos_client)
@@ -339,9 +357,8 @@ async def run_policy(config: DeployConfig) -> None:
                 "obs_imu",
                 "Observed IMU Data",
                 "obs",
-                {"imu_gyro": "Gyro (rad/s)", "projected_gravity": "Gravity (m/s^2)"},
+                {"projected_gravity": "Gravity (m/s^2)"},
             )
-            save_plot("obs_phase", "Observed Timestep Phase", "obs", {"timestep_phase": "Phase (cos/sin)"})
 
             # Plot Commands
             save_plot(
@@ -378,8 +395,6 @@ async def run_policy(config: DeployConfig) -> None:
             "units": {
                 "obs": {
                     "Projected gravity": "Units in m/s^2",
-                    "IMU gyro": "Units in rad/s",
-                    "Timestep phase": "",
                     "Position": "Units in rad",
                     "Velocity": "Units in rad/s",
                 },
@@ -399,66 +414,85 @@ async def run_policy(config: DeployConfig) -> None:
         "data": {},
     }
 
-    kos_client = pykos.KOS(ip=config.ip, port=config.port)
+    timing_data: list[float] = []
 
-    model = tf.saved_model.load(config.model_path)
+    async with pykos.KOS(ip=config.ip, port=config.port) as kos_client:
+        model = tf.saved_model.load(config.policy_path)
 
-    # Warm up model
-    logger.info("Warming up model...")
-    obs = await get_obs(kos_client)
-    cmd = await get_command(config.joystick_enabled)
-    carry = np.zeros(config.rnn_carry_shape)[None, :]
-    _ = model.infer(obs_to_vec(obs, cmd), carry)
+        # Warm up model
+        logger.info("Warming up model...")
+        obs = await get_obs(kos_client)
+        cmd = await get_command(config.joystick_enabled)
+        carry = np.zeros(config.rnn_carry_shape)[None, :]
+        _ = model.infer(obs_to_vec(obs, cmd), carry)
 
-    logger.info("Starting preflight...")
-    await preflight()
+        logger.info("Starting preflight...")
+        await preflight(kos_client)
 
-    if config.run_mode == "real":
-        for i in range(5, -1, -1):
-            logger.info("Starting rollout in %d...", i)
-    else:
-        await reset_sim(kos_client)
+        logger.info("Press 'Enter' to start the rollout...")
+        try:
+            input()
+        except Exception as e:
+            logger.error("Error waiting for user input: %s", e)
+            raise
 
-    start_time = time.time()
-    target_time = start_time + config.dt
+        if config.run_mode == "real":
+            for i in range(5, -1, -1):
+                logger.info("Starting rollout in %d...", i)
+                await asyncio.sleep(1)
+        else:
+            await reset_sim(kos_client)
 
-    try:
-        while time.time() - start_time < config.episode_length:
-            action, carry = model.infer(obs_to_vec(obs, cmd), carry)
+        action_future: asyncio.Task | None = None
 
-            action_array = np.array(action).reshape(-1)
+        start_time = time.monotonic()
+        target_time = start_time + config.dt
 
-            elapsed_time = time.time() - start_time
-            rollout_dict["data"][f"{elapsed_time:.4f}"] = StepDataDict(
-                obs={k: v.tolist() for k, v in obs.items()},
-                cmd={k: v.tolist() for k, v in cmd.items()},
-                action=action_array.tolist(),
-            )
+        try:
+            while time.monotonic() - start_time < config.episode_length:
+                if action_future is not None and not action_future.done():
+                    logger.info("Waiting for previous action to be transmitted...")
+                    await action_future
 
-            obs, cmd, _ = await asyncio.gather(
-                get_obs(kos_client),
-                get_command(config.joystick_enabled),
-                send_action(action_array, kos_client),
-            )
+                obs, cmd = await asyncio.gather(
+                    get_obs(kos_client),
+                    get_command(config.joystick_enabled),
+                )
 
-            if time.time() > target_time:
-                logger.warning("Loop overran by %f seconds", time.time() - target_time)
-            else:
-                logger.debug("Sleeping for %f seconds", target_time - time.time())
-                await asyncio.sleep(max(0, target_time - time.time()))
+                action, carry = model.infer(obs_to_vec(obs, cmd), carry)
 
-            target_time += config.dt
+                action_array = np.array(action).reshape(-1)
 
-    except asyncio.CancelledError:
-        logger.info("Episode cancelled")
+                elapsed_time = time.monotonic() - start_time
+                rollout_dict["data"][f"{elapsed_time:.4f}"] = StepDataDict(
+                    obs={k: v.tolist() for k, v in obs.items()},
+                    cmd={k: v.tolist() for k, v in cmd.items()},
+                    action=action_array.tolist(),
+                )
 
-    await postflight()
+                # send_action_start = time.perf_counter()
+                action_future = asyncio.create_task(send_action(action_array, kos_client))
+                # send_action_end = time.perf_counter()
+                # timing_data.append(send_action_end - send_action_start)
+
+                if time.monotonic() > target_time:
+                    logger.warning("Loop overran by %f seconds", time.monotonic() - target_time)
+                else:
+                    logger.debug("Sleeping for %f seconds", target_time - time.monotonic())
+                    await asyncio.sleep(max(0, target_time - time.monotonic()))
+
+                target_time += config.dt
+
+        except asyncio.CancelledError:
+            logger.info("Episode cancelled")
+
+        finally:
+            await postflight(timing_data)
 
 
-# python benchmark/deploy.py converted --action-scale 1.0
 async def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("model_path", type=str)
+    parser.add_argument("policy_path", type=str)
     parser.add_argument("--action-scale", type=float, default=0.1)
     parser.add_argument("--run-mode", type=str, default="sim")
     parser.add_argument("--joystick-enabled", action="store_true")
@@ -468,6 +502,8 @@ async def main() -> None:
     parser.add_argument("--port", type=int, default=50051)
     parser.add_argument("--log-dir", type=str, default="rollouts")
     parser.add_argument("--save-plots", action="store_true")
+    parser.add_argument("--metadata", type=str, default="kbot")
+    parser.add_argument("--cache", action="store_true")
     args = parser.parse_args()
 
     colorlogging.configure(level=logging.DEBUG if args.debug else logging.INFO)
@@ -476,7 +512,9 @@ async def main() -> None:
 
     logger.info("Args: %s", config)
 
-    await run_policy(config)
+    actuator_list = await get_metadata(model_name_or_dir=config.metadata, cache=config.cache)
+
+    await run_policy(config, actuator_list)
 
 
 if __name__ == "__main__":
