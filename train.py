@@ -418,7 +418,7 @@ class HumanoidWalkingTask(ksim.PPOTask[HumanoidWalkingTaskConfig]):
             ksim.ProjectedGravityObservation.create(
                 physics_model=physics_model,
                 framequat_name="imu_site_quat",
-                lag_range=(0.0, 0.5),
+                lag_range=(0.0, 0.1),
             ),
             ksim.ActuatorAccelerationObservation(),
             ksim.BasePositionObservation(),
