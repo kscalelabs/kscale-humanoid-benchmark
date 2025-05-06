@@ -332,28 +332,6 @@ class HumanoidWalkingTaskConfig(ksim.PPOConfig):
         help="Weight decay for the Adam optimizer.",
     )
 
-    # Curriculum parameters.
-    num_curriculum_levels: int = xax.field(
-        value=10,
-        help="The number of curriculum levels to use.",
-    )
-    increase_threshold: float = xax.field(
-        value=3.0,
-        help="Increase the curriculum level when the mean trajectory length is above this threshold.",
-    )
-    decrease_threshold: float = xax.field(
-        value=1.0,
-        help="Decrease the curriculum level when the mean trajectory length is below this threshold.",
-    )
-    min_level_steps: int = xax.field(
-        value=50,
-        help="The minimum number of steps to wait before changing the curriculum level.",
-    )
-    min_curriculum_level: float = xax.field(
-        value=0.0,
-        help="The minimum curriculum level to use.",
-    )
-
     # Rendering parameters.
     render_track_body_id: int | None = xax.field(
         value=0,
@@ -398,7 +376,6 @@ class HumanoidWalkingTask(ksim.PPOTask[HumanoidWalkingTaskConfig]):
     def get_physics_randomizers(self, physics_model: ksim.PhysicsModel) -> list[ksim.PhysicsRandomizer]:
         return [
             ksim.StaticFrictionRandomizer(),
-            ksim.FloorFrictionRandomizer.from_geom_name(physics_model, "floor", scale_lower=0.8, scale_upper=1.2),
             ksim.ArmatureRandomizer(),
             ksim.AllBodiesMassMultiplicationRandomizer(scale_lower=0.95, scale_upper=1.05),
             ksim.JointDampingRandomizer(),
@@ -408,13 +385,13 @@ class HumanoidWalkingTask(ksim.PPOTask[HumanoidWalkingTaskConfig]):
     def get_events(self, physics_model: ksim.PhysicsModel) -> list[ksim.Event]:
         return [
             ksim.PushEvent(
-                x_force=1.5,
-                y_force=1.5,
+                x_force=3.0,
+                y_force=3.0,
                 z_force=0.1,
                 x_angular_force=0.1,
                 y_angular_force=0.1,
                 z_angular_force=0.3,
-                interval_range=(0.5, 4.0),
+                interval_range=(0.5, 2.0),
             ),
         ]
 
@@ -422,6 +399,7 @@ class HumanoidWalkingTask(ksim.PPOTask[HumanoidWalkingTaskConfig]):
         return [
             ksim.RandomJointPositionReset.create(physics_model, {k: v for k, v in ZEROS}, scale=0.1),
             ksim.RandomJointVelocityReset(),
+            ksim.RandomHeadingReset(),
         ]
 
     def get_observations(self, physics_model: ksim.PhysicsModel) -> list[ksim.Observation]:
@@ -459,37 +437,31 @@ class HumanoidWalkingTask(ksim.PPOTask[HumanoidWalkingTaskConfig]):
         return [
             # Standard rewards.
             ksim.StayAliveReward(scale=1.0),
-            ksim.NaiveForwardReward(clip_min=0.0, clip_max=0.5, scale=1.0),
+            # ksim.NaiveForwardReward(clip_min=0.0, clip_max=0.5, scale=1.0),
             ksim.UprightReward(scale=0.1),
             # Normalization penalties.
+            ksim.AvoidLimitsPenalty.create(physics_model, scale=-0.01),
             ksim.ActionInBoundsReward.create(physics_model, scale=0.01),
-            ksim.AngularVelocityPenalty(index="x", scale=-0.005),
-            ksim.AngularVelocityPenalty(index="y", scale=-0.005),
-            ksim.AngularVelocityPenalty(index="z", scale=-0.005),
-            ksim.LinearVelocityPenalty(index="y", scale=-0.005),
-            ksim.LinearVelocityPenalty(index="z", scale=-0.005),
+            ksim.AngularVelocityPenalty(index=("x", "y", "z"), scale=-0.005),
+            ksim.LinearVelocityPenalty(index=("x", "y", "z"), scale=-0.005),
+            ksim.JointVelocityPenalty(scale=-0.005),
+            ksim.ActionSmoothnessPenalty(scale=-0.01),
+            ksim.ActuatorRelativeForcePenalty.create(physics_model, scale=-0.01),
             # Bespoke rewards.
             BentArmPenalty.create_penalty(physics_model, scale=-0.1),
-            StraightLegPenalty.create_penalty(physics_model, scale=-0.01),
+            StraightLegPenalty.create_penalty(physics_model, scale=-0.1),
         ]
 
     def get_terminations(self, physics_model: ksim.PhysicsModel) -> list[ksim.Termination]:
         return [
-            ksim.BadZTermination(unhealthy_z_lower=0.9, unhealthy_z_upper=1.6),
-            ksim.NotUprightTermination(max_radians=math.radians(30)),
+            ksim.BadZTermination(unhealthy_z_lower=0.4, unhealthy_z_upper=1.6),
+            ksim.NotUprightTermination(max_radians=math.radians(60)),
             ksim.HighVelocityTermination(),
             ksim.FarFromOriginTermination(max_dist=10.0),
         ]
 
     def get_curriculum(self, physics_model: ksim.PhysicsModel) -> ksim.Curriculum:
-        return ksim.EpisodeLengthCurriculum(
-            num_levels=self.config.num_curriculum_levels,
-            increase_threshold=self.config.increase_threshold,
-            decrease_threshold=self.config.decrease_threshold,
-            min_level_steps=self.config.min_level_steps,
-            dt=self.config.ctrl_dt,
-            min_level=self.config.min_curriculum_level,
-        )
+        return ksim.ConstantCurriculum(level=1.0)
 
     def get_model(self, key: PRNGKeyArray) -> Model:
         return Model(
@@ -649,7 +621,7 @@ if __name__ == "__main__":
             # Training parameters.
             num_envs=2048,
             batch_size=256,
-            num_passes=2,
+            num_passes=4,
             epochs_per_log_step=1,
             rollout_length_seconds=8.0,
             # Simulation parameters.
