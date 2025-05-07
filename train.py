@@ -48,6 +48,10 @@ ZEROS: list[tuple[str, float]] = [
 ]
 
 
+class CleanJointPositionObservation(ksim.JointPositionObservation):
+    pass
+
+
 @attrs.define(frozen=True, kw_only=True)
 class JointPositionPenalty(ksim.JointDeviationPenalty):
     @classmethod
@@ -333,7 +337,7 @@ class HumanoidWalkingTaskConfig(ksim.PPOConfig):
         help="Whether to use delta actions.",
     )
     delta_action_scale: float = xax.field(
-        value=math.radians(15.0),
+        value=math.radians(45.0),
         help="The range for the delta actions, in radians.",
     )
 
@@ -434,8 +438,9 @@ class HumanoidWalkingTask(ksim.PPOTask[HumanoidWalkingTaskConfig]):
 
     def get_observations(self, physics_model: ksim.PhysicsModel) -> list[ksim.Observation]:
         return [
-            ksim.JointPositionObservation(),
-            ksim.JointVelocityObservation(),
+            CleanJointPositionObservation(),
+            ksim.JointPositionObservation(noise=math.radians(2)),
+            ksim.JointVelocityObservation(noise=math.radians(10)),
             ksim.ActuatorForceObservation(),
             ksim.CenterOfMassInertiaObservation(),
             ksim.CenterOfMassVelocityObservation(),
@@ -449,6 +454,7 @@ class HumanoidWalkingTask(ksim.PPOTask[HumanoidWalkingTaskConfig]):
                 physics_model=physics_model,
                 framequat_name="imu_site_quat",
                 lag_range=(0.0, 0.1),
+                noise=math.radians(1),
             ),
             ksim.ActuatorAccelerationObservation(),
             ksim.BasePositionObservation(),
@@ -456,8 +462,16 @@ class HumanoidWalkingTask(ksim.PPOTask[HumanoidWalkingTaskConfig]):
             ksim.BaseLinearVelocityObservation(),
             ksim.BaseAngularVelocityObservation(),
             ksim.CenterOfMassVelocityObservation(),
-            ksim.SensorObservation.create(physics_model=physics_model, sensor_name="imu_acc"),
-            ksim.SensorObservation.create(physics_model=physics_model, sensor_name="imu_gyro"),
+            ksim.SensorObservation.create(
+                physics_model=physics_model,
+                sensor_name="imu_acc",
+                noise=1.0,
+            ),
+            ksim.SensorObservation.create(
+                physics_model=physics_model,
+                sensor_name="imu_gyro",
+                noise=math.radians(10),
+            ),
         ]
 
     def get_commands(self, physics_model: ksim.PhysicsModel) -> list[ksim.Command]:
@@ -521,6 +535,9 @@ class HumanoidWalkingTask(ksim.PPOTask[HumanoidWalkingTaskConfig]):
         imu_acc_3 = observations["sensor_observation_imu_acc"]
         imu_gyro_3 = observations["sensor_observation_imu_gyro"]
 
+        # This is the true joint position, which is not observed.
+        qpos_n = observations["clean_joint_position_observation"]
+
         obs_n = jnp.concatenate(
             [
                 joint_pos_n,  # NUM_JOINTS
@@ -533,6 +550,9 @@ class HumanoidWalkingTask(ksim.PPOTask[HumanoidWalkingTaskConfig]):
         )
 
         action, carry = model.forward(obs_n, carry)
+
+        if self.config.use_delta_actions:
+            action = distrax.Transformed(action, distrax.ScalarAffine(shift=qpos_n))
 
         return action, carry
 
@@ -590,10 +610,7 @@ class HumanoidWalkingTask(ksim.PPOTask[HumanoidWalkingTaskConfig]):
                 commands=transition.command,
                 carry=actor_carry,
             )
-            if self.config.use_delta_actions:
-                log_probs = actor_dist.log_prob(transition.action - transition.qpos[..., 7:])
-            else:
-                log_probs = actor_dist.log_prob(transition.action)
+            log_probs = actor_dist.log_prob(transition.action)
             assert isinstance(log_probs, Array)
             value, next_critic_carry = self.run_critic(
                 model=model.critic,
@@ -647,8 +664,6 @@ class HumanoidWalkingTask(ksim.PPOTask[HumanoidWalkingTaskConfig]):
         )
 
         action_j = action_dist_j.mode() if argmax else action_dist_j.sample(seed=rng)
-        if self.config.use_delta_actions:
-            action_j = action_j + physics_state.data.qpos[..., 7:]
 
         return ksim.Action(
             action=action_j,
