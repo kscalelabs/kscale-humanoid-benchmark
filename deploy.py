@@ -182,9 +182,10 @@ class RolloutDict(TypedDict):
 
 async def run_policy(config: DeployConfig, actuator_list: list[Actuator]) -> None:
     async def get_obs(kos_client: pykos.KOS) -> dict:
-        actuator_states, quaternion = await asyncio.gather(
+        actuator_states, quaternion, imu_values = await asyncio.gather(
             kos_client.actuator.get_actuators_state([ac.actuator_id for ac in actuator_list]),
             kos_client.imu.get_quaternion(),
+            kos_client.imu.get_imu_values(),
         )
 
         # Joint observations
@@ -204,10 +205,15 @@ async def run_policy(config: DeployConfig, actuator_list: list[Actuator]) -> Non
             inverse=True,
         )
 
+        imu_acc = np.array([imu_values.gyro_x, imu_values.gyro_y, imu_values.gyro_z])
+        imu_gyro = np.array([imu_values.accel_x, imu_values.accel_y, imu_values.accel_z])
+
         return {
             "pos_obs": pos_obs,
             "vel_obs": vel_obs,
             "projected_gravity": projected_gravity,
+            "imu_acc": imu_acc,
+            "imu_gyro": imu_gyro,
         }
 
     def obs_to_vec(obs: dict, cmd: dict) -> np.ndarray:
@@ -217,6 +223,8 @@ async def run_policy(config: DeployConfig, actuator_list: list[Actuator]) -> Non
                 obs["pos_obs"],
                 obs["vel_obs"],
                 obs["projected_gravity"],
+                obs["imu_acc"],
+                obs["imu_gyro"],
             ]
         )[None, :]
 
@@ -357,7 +365,7 @@ async def run_policy(config: DeployConfig, actuator_list: list[Actuator]) -> Non
                 "obs_imu",
                 "Observed IMU Data",
                 "obs",
-                {"projected_gravity": "Gravity (m/s^2)"},
+                {"projected_gravity": "Gravity (m/s^2)", "imu_acc": "Acceleration (m/s^2)", "imu_gyro": "Gyro (rad/s)"},
             )
 
             # Plot Commands
@@ -472,6 +480,7 @@ async def run_policy(config: DeployConfig, actuator_list: list[Actuator]) -> Non
 
                 # send_action_start = time.perf_counter()
                 action_future = asyncio.create_task(send_action(action_array, kos_client))
+                # await send_action(action_array, kos_client)
                 # send_action_end = time.perf_counter()
                 # timing_data.append(send_action_end - send_action_start)
 
