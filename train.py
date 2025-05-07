@@ -20,7 +20,7 @@ from jaxtyping import Array, PRNGKeyArray
 from kscale.web.gen.api import JointMetadataOutput
 
 NUM_JOINTS = 20
-NUM_ACTOR_INPUTS = 43
+NUM_ACTOR_INPUTS = 49
 NUM_CRITIC_INPUTS = 444
 
 # These are in the order of the neural network outputs.
@@ -132,6 +132,8 @@ class Actor(eqx.Module):
     min_std: float = eqx.static_field()
     max_std: float = eqx.static_field()
     var_scale: float = eqx.static_field()
+    use_delta_actions: bool = eqx.static_field()
+    delta_action_scale: float = eqx.static_field()
 
     def __init__(
         self,
@@ -145,6 +147,8 @@ class Actor(eqx.Module):
         hidden_size: int,
         num_mixtures: int,
         depth: int,
+        use_delta_actions: bool,
+        delta_action_scale: float,
     ) -> None:
         # Project input to hidden size
         key, input_proj_key = jax.random.split(key)
@@ -180,6 +184,8 @@ class Actor(eqx.Module):
         self.min_std = min_std
         self.max_std = max_std
         self.var_scale = var_scale
+        self.use_delta_actions = use_delta_actions
+        self.delta_action_scale = delta_action_scale
 
     def forward(self, obs_n: Array, carry: Array) -> tuple[distrax.Distribution, Array]:
         x_n = self.input_proj(obs_n)
@@ -199,9 +205,14 @@ class Actor(eqx.Module):
         std_nm = jnp.clip((jax.nn.softplus(std_nm) + self.min_std) * self.var_scale, max=self.max_std)
 
         # Apply bias to the means.
-        mean_nm = mean_nm + jnp.array([v for _, v in ZEROS])[:, None]
+        if not self.use_delta_actions:
+            mean_nm = mean_nm + jnp.array([v for _, v in ZEROS])[:, None]
 
         dist_n = ksim.MixtureOfGaussians(means_nm=mean_nm, stds_nm=std_nm, logits_nm=logits_nm)
+
+        if self.use_delta_actions:
+            dist_n = distrax.Transformed(dist_n, distrax.Tanh())
+            dist_n = distrax.Transformed(dist_n, distrax.ScalarAffine(shift=0.0, scale=self.delta_action_scale))
 
         return dist_n, jnp.stack(out_carries, axis=0)
 
@@ -277,6 +288,8 @@ class Model(eqx.Module):
         hidden_size: int,
         num_mixtures: int,
         depth: int,
+        use_delta_actions: bool,
+        delta_action_scale: float,
     ) -> None:
         self.actor = Actor(
             key,
@@ -284,10 +297,12 @@ class Model(eqx.Module):
             num_outputs=num_outputs,
             min_std=min_std,
             max_std=max_std,
-            var_scale=0.5,
+            var_scale=1.0,
             hidden_size=hidden_size,
             num_mixtures=num_mixtures,
             depth=depth,
+            use_delta_actions=use_delta_actions,
+            delta_action_scale=delta_action_scale,
         )
         self.critic = Critic(
             key,
@@ -313,9 +328,13 @@ class HumanoidWalkingTaskConfig(ksim.PPOConfig):
         value=5,
         help="The number of mixtures for the actor.",
     )
-    scale: float = xax.field(
-        value=0.1,
-        help="The maximum position delta on each step, in radians.",
+    use_delta_actions: bool = xax.field(
+        value=True,
+        help="Whether to use delta actions.",
+    )
+    delta_action_scale: float = xax.field(
+        value=1.0,
+        help="The range for the delta actions, in radians.",
     )
 
     # Optimizer parameters.
@@ -387,11 +406,22 @@ class HumanoidWalkingTask(ksim.PPOTask[HumanoidWalkingTaskConfig]):
             ksim.PushEvent(
                 x_force=3.0,
                 y_force=3.0,
-                z_force=0.1,
+                z_force=0.5,
+                force_range=(0.5, 1.0),
+                x_angular_force=0.3,
+                y_angular_force=0.3,
+                z_angular_force=0.6,
+                interval_range=(4.0, 8.0),
+            ),
+            ksim.PushEvent(
+                x_force=1.5,
+                y_force=1.5,
+                z_force=0.5,
+                force_range=(0.5, 1.0),
                 x_angular_force=0.1,
                 y_angular_force=0.1,
                 z_angular_force=0.3,
-                interval_range=(0.5, 2.0),
+                interval_range=(0.5, 1.0),
             ),
         ]
 
@@ -439,17 +469,18 @@ class HumanoidWalkingTask(ksim.PPOTask[HumanoidWalkingTaskConfig]):
             ksim.StayAliveReward(scale=1.0),
             # ksim.NaiveForwardReward(clip_min=0.0, clip_max=0.5, scale=1.0),
             ksim.UprightReward(scale=0.1),
+            # Avoid movement penalties.
+            ksim.AngularVelocityPenalty(index=("x", "y", "z"), scale=-0.005),
+            ksim.LinearVelocityPenalty(index=("x", "y", "z"), scale=-0.005),
             # Normalization penalties.
             ksim.AvoidLimitsPenalty.create(physics_model, scale=-0.01),
             ksim.ActionInBoundsReward.create(physics_model, scale=0.01),
-            ksim.AngularVelocityPenalty(index=("x", "y", "z"), scale=-0.005),
-            ksim.LinearVelocityPenalty(index=("x", "y", "z"), scale=-0.005),
             ksim.JointVelocityPenalty(scale=-0.005),
             ksim.ActionSmoothnessPenalty(scale=-0.01),
             ksim.ActuatorRelativeForcePenalty.create(physics_model, scale=-0.01),
             # Bespoke rewards.
             BentArmPenalty.create_penalty(physics_model, scale=-0.1),
-            StraightLegPenalty.create_penalty(physics_model, scale=-0.1),
+            StraightLegPenalty.create_penalty(physics_model, scale=-0.01),
         ]
 
     def get_terminations(self, physics_model: ksim.PhysicsModel) -> list[ksim.Termination]:
@@ -473,6 +504,8 @@ class HumanoidWalkingTask(ksim.PPOTask[HumanoidWalkingTaskConfig]):
             hidden_size=self.config.hidden_size,
             num_mixtures=self.config.num_mixtures,
             depth=self.config.depth,
+            use_delta_actions=self.config.use_delta_actions,
+            delta_action_scale=self.config.delta_action_scale,
         )
 
     def run_actor(
@@ -485,12 +518,16 @@ class HumanoidWalkingTask(ksim.PPOTask[HumanoidWalkingTaskConfig]):
         joint_pos_n = observations["joint_position_observation"]
         joint_vel_n = observations["joint_velocity_observation"]
         proj_grav_3 = observations["projected_gravity_observation"]
+        imu_acc_3 = observations["sensor_observation_imu_acc"]
+        imu_gyro_3 = observations["sensor_observation_imu_gyro"]
 
         obs_n = jnp.concatenate(
             [
                 joint_pos_n,  # NUM_JOINTS
                 joint_vel_n,  # NUM_JOINTS
                 proj_grav_3,  # 3
+                imu_acc_3,  # 3
+                imu_gyro_3,  # 3
             ],
             axis=-1,
         )
@@ -553,7 +590,10 @@ class HumanoidWalkingTask(ksim.PPOTask[HumanoidWalkingTaskConfig]):
                 commands=transition.command,
                 carry=actor_carry,
             )
-            log_probs = actor_dist.log_prob(transition.action)
+            if self.config.use_delta_actions:
+                log_probs = actor_dist.log_prob(transition.action - transition.qpos[..., 7:])
+            else:
+                log_probs = actor_dist.log_prob(transition.action)
             assert isinstance(log_probs, Array)
             value, next_critic_carry = self.run_critic(
                 model=model.critic,
@@ -607,6 +647,8 @@ class HumanoidWalkingTask(ksim.PPOTask[HumanoidWalkingTaskConfig]):
         )
 
         action_j = action_dist_j.mode() if argmax else action_dist_j.sample(seed=rng)
+        if self.config.use_delta_actions:
+            action_j = action_j + physics_state.data.qpos[..., 7:]
 
         return ksim.Action(
             action=action_j,
