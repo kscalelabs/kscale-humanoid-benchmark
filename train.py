@@ -333,7 +333,7 @@ class HumanoidWalkingTaskConfig(ksim.PPOConfig):
         help="Whether to use delta actions.",
     )
     delta_action_scale: float = xax.field(
-        value=1.0,
+        value=math.radians(15.0),
         help="The range for the delta actions, in radians.",
     )
 
@@ -404,8 +404,8 @@ class HumanoidWalkingTask(ksim.PPOTask[HumanoidWalkingTaskConfig]):
     def get_events(self, physics_model: ksim.PhysicsModel) -> list[ksim.Event]:
         return [
             ksim.PushEvent(
-                x_force=3.0,
-                y_force=3.0,
+                x_force=2.0,
+                y_force=2.0,
                 z_force=0.5,
                 force_range=(0.5, 1.0),
                 x_angular_force=0.3,
@@ -414,9 +414,9 @@ class HumanoidWalkingTask(ksim.PPOTask[HumanoidWalkingTaskConfig]):
                 interval_range=(4.0, 8.0),
             ),
             ksim.PushEvent(
-                x_force=1.5,
-                y_force=1.5,
-                z_force=0.5,
+                x_force=0.5,
+                y_force=0.5,
+                z_force=0.3,
                 force_range=(0.5, 1.0),
                 x_angular_force=0.1,
                 y_angular_force=0.1,
