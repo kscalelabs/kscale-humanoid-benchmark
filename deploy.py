@@ -286,7 +286,11 @@ async def run_policy(config: DeployConfig, actuator_list: list[Actuator]) -> Non
 
     async def reset_sim(kos_client: pykos.KOS) -> None:
         logger.info("Resetting simulation...")
-        await kos_client.sim.reset(pos={"x": 0.0, "y": 0.0, "z": 1.01}, quat={"x": 0.0, "y": 0.0, "z": 0.0, "w": 1.0})
+        await kos_client.sim.reset(
+            pos={"x": 0.0, "y": 0.0, "z": 1.01},
+            quat={"x": 0.0, "y": 0.0, "z": 0.0, "w": 1.0},
+            joints=[{"name": ac.joint_name, "pos": home_position[ac.actuator_id]} for ac in actuator_list],
+        )
 
     async def preflight(kos_client: pykos.KOS) -> None:
         os.makedirs(Path(config.log_dir) / config.run_mode, exist_ok=True)
