@@ -28,28 +28,24 @@ ZEROS: list[tuple[str, float]] = [
     ("dof_right_shoulder_pitch_03", 0.0),
     ("dof_right_shoulder_roll_03", math.radians(-10.0)),
     ("dof_right_shoulder_yaw_02", 0.0),
-    ("dof_right_elbow_02", math.radians(90.0)),
+    ("dof_right_elbow_02", math.radians(15.0)),
     ("dof_right_wrist_00", 0.0),
     ("dof_left_shoulder_pitch_03", 0.0),
     ("dof_left_shoulder_roll_03", math.radians(10.0)),
     ("dof_left_shoulder_yaw_02", 0.0),
-    ("dof_left_elbow_02", math.radians(-90.0)),
+    ("dof_left_elbow_02", math.radians(-15.0)),
     ("dof_left_wrist_00", 0.0),
     ("dof_right_hip_pitch_04", math.radians(-25.0)),
-    ("dof_right_hip_roll_03", 0.0),
+    ("dof_right_hip_roll_03", math.radians(-5.0)),
     ("dof_right_hip_yaw_03", 0.0),
     ("dof_right_knee_04", math.radians(-50.0)),
     ("dof_right_ankle_02", math.radians(25.0)),
     ("dof_left_hip_pitch_04", math.radians(25.0)),
-    ("dof_left_hip_roll_03", 0.0),
+    ("dof_left_hip_roll_03", math.radians(5.0)),
     ("dof_left_hip_yaw_03", 0.0),
     ("dof_left_knee_04", math.radians(50.0)),
     ("dof_left_ankle_02", math.radians(-25.0)),
 ]
-
-
-class CleanJointPositionObservation(ksim.JointPositionObservation):
-    pass
 
 
 @attrs.define(frozen=True, kw_only=True)
@@ -113,8 +109,10 @@ class StraightLegPenalty(JointPositionPenalty):
     ) -> Self:
         return cls.create_from_names(
             names=[
+                "dof_left_hip_pitch_04",
                 "dof_left_hip_roll_03",
                 "dof_left_hip_yaw_03",
+                "dof_right_hip_pitch_04",
                 "dof_right_hip_roll_03",
                 "dof_right_hip_yaw_03",
             ],
@@ -136,8 +134,6 @@ class Actor(eqx.Module):
     min_std: float = eqx.static_field()
     max_std: float = eqx.static_field()
     var_scale: float = eqx.static_field()
-    use_delta_actions: bool = eqx.static_field()
-    delta_action_scale: float = eqx.static_field()
 
     def __init__(
         self,
@@ -151,8 +147,6 @@ class Actor(eqx.Module):
         hidden_size: int,
         num_mixtures: int,
         depth: int,
-        use_delta_actions: bool,
-        delta_action_scale: float,
     ) -> None:
         # Project input to hidden size
         key, input_proj_key = jax.random.split(key)
@@ -188,8 +182,6 @@ class Actor(eqx.Module):
         self.min_std = min_std
         self.max_std = max_std
         self.var_scale = var_scale
-        self.use_delta_actions = use_delta_actions
-        self.delta_action_scale = delta_action_scale
 
     def forward(self, obs_n: Array, carry: Array) -> tuple[distrax.Distribution, Array]:
         x_n = self.input_proj(obs_n)
@@ -209,14 +201,9 @@ class Actor(eqx.Module):
         std_nm = jnp.clip((jax.nn.softplus(std_nm) + self.min_std) * self.var_scale, max=self.max_std)
 
         # Apply bias to the means.
-        if not self.use_delta_actions:
-            mean_nm = mean_nm + jnp.array([v for _, v in ZEROS])[:, None]
+        mean_nm = mean_nm + jnp.array([v for _, v in ZEROS])[:, None]
 
         dist_n = ksim.MixtureOfGaussians(means_nm=mean_nm, stds_nm=std_nm, logits_nm=logits_nm)
-
-        if self.use_delta_actions:
-            dist_n = distrax.Transformed(dist_n, distrax.Tanh())
-            dist_n = distrax.Transformed(dist_n, distrax.ScalarAffine(shift=0.0, scale=self.delta_action_scale))
 
         return dist_n, jnp.stack(out_carries, axis=0)
 
@@ -292,8 +279,6 @@ class Model(eqx.Module):
         hidden_size: int,
         num_mixtures: int,
         depth: int,
-        use_delta_actions: bool,
-        delta_action_scale: float,
     ) -> None:
         self.actor = Actor(
             key,
@@ -305,8 +290,6 @@ class Model(eqx.Module):
             hidden_size=hidden_size,
             num_mixtures=num_mixtures,
             depth=depth,
-            use_delta_actions=use_delta_actions,
-            delta_action_scale=delta_action_scale,
         )
         self.critic = Critic(
             key,
@@ -331,14 +314,6 @@ class HumanoidWalkingTaskConfig(ksim.PPOConfig):
     num_mixtures: int = xax.field(
         value=5,
         help="The number of mixtures for the actor.",
-    )
-    use_delta_actions: bool = xax.field(
-        value=True,
-        help="Whether to use delta actions.",
-    )
-    delta_action_scale: float = xax.field(
-        value=math.radians(45.0),
-        help="The range for the delta actions, in radians.",
     )
 
     # Optimizer parameters.
@@ -408,24 +383,14 @@ class HumanoidWalkingTask(ksim.PPOTask[HumanoidWalkingTaskConfig]):
     def get_events(self, physics_model: ksim.PhysicsModel) -> list[ksim.Event]:
         return [
             ksim.PushEvent(
-                x_force=2.0,
-                y_force=2.0,
-                z_force=0.5,
-                force_range=(0.5, 1.0),
-                x_angular_force=0.3,
-                y_angular_force=0.3,
-                z_angular_force=0.6,
-                interval_range=(4.0, 8.0),
-            ),
-            ksim.PushEvent(
-                x_force=0.5,
-                y_force=0.5,
+                x_force=3.0,
+                y_force=3.0,
                 z_force=0.3,
                 force_range=(0.5, 1.0),
                 x_angular_force=0.1,
                 y_angular_force=0.1,
-                z_angular_force=0.3,
-                interval_range=(0.5, 1.0),
+                z_angular_force=1.0,
+                interval_range=(0.5, 4.0),
             ),
         ]
 
@@ -438,7 +403,6 @@ class HumanoidWalkingTask(ksim.PPOTask[HumanoidWalkingTaskConfig]):
 
     def get_observations(self, physics_model: ksim.PhysicsModel) -> list[ksim.Observation]:
         return [
-            CleanJointPositionObservation(),
             ksim.JointPositionObservation(noise=math.radians(2)),
             ksim.JointVelocityObservation(noise=math.radians(10)),
             ksim.ActuatorForceObservation(),
@@ -481,20 +445,20 @@ class HumanoidWalkingTask(ksim.PPOTask[HumanoidWalkingTaskConfig]):
         return [
             # Standard rewards.
             ksim.StayAliveReward(scale=1.0),
-            # ksim.NaiveForwardReward(clip_min=0.0, clip_max=0.5, scale=1.0),
-            ksim.UprightReward(scale=0.1),
+            ksim.UprightReward(scale=1.0),
             # Avoid movement penalties.
             ksim.AngularVelocityPenalty(index=("x", "y", "z"), scale=-0.005),
             ksim.LinearVelocityPenalty(index=("x", "y", "z"), scale=-0.005),
             # Normalization penalties.
-            ksim.AvoidLimitsPenalty.create(physics_model, scale=-0.01),
             ksim.ActionInBoundsReward.create(physics_model, scale=0.01),
-            ksim.JointVelocityPenalty(scale=-0.005),
+            ksim.AvoidLimitsPenalty.create(physics_model, scale=-0.01),
+            ksim.ActionNearPositionPenalty(joint_threshold=math.radians(2.0), scale=-0.01),
+            ksim.JointVelocityPenalty(scale=-0.01, scale_by_curriculum=True),
             ksim.ActionSmoothnessPenalty(scale=-0.01),
             ksim.ActuatorRelativeForcePenalty.create(physics_model, scale=-0.01),
             # Bespoke rewards.
             BentArmPenalty.create_penalty(physics_model, scale=-0.1),
-            StraightLegPenalty.create_penalty(physics_model, scale=-0.01),
+            StraightLegPenalty.create_penalty(physics_model, scale=-0.1),
         ]
 
     def get_terminations(self, physics_model: ksim.PhysicsModel) -> list[ksim.Termination]:
@@ -506,7 +470,10 @@ class HumanoidWalkingTask(ksim.PPOTask[HumanoidWalkingTaskConfig]):
         ]
 
     def get_curriculum(self, physics_model: ksim.PhysicsModel) -> ksim.Curriculum:
-        return ksim.ConstantCurriculum(level=1.0)
+        return ksim.LinearCurriculum(
+            step_size=0.01,
+            step_every_n_epochs=10,
+        )
 
     def get_model(self, key: PRNGKeyArray) -> Model:
         return Model(
@@ -518,8 +485,6 @@ class HumanoidWalkingTask(ksim.PPOTask[HumanoidWalkingTaskConfig]):
             hidden_size=self.config.hidden_size,
             num_mixtures=self.config.num_mixtures,
             depth=self.config.depth,
-            use_delta_actions=self.config.use_delta_actions,
-            delta_action_scale=self.config.delta_action_scale,
         )
 
     def run_actor(
@@ -535,9 +500,6 @@ class HumanoidWalkingTask(ksim.PPOTask[HumanoidWalkingTaskConfig]):
         imu_acc_3 = observations["sensor_observation_imu_acc"]
         imu_gyro_3 = observations["sensor_observation_imu_gyro"]
 
-        # This is the true joint position, which is not observed.
-        qpos_n = observations["clean_joint_position_observation"]
-
         obs_n = jnp.concatenate(
             [
                 joint_pos_n,  # NUM_JOINTS
@@ -550,9 +512,6 @@ class HumanoidWalkingTask(ksim.PPOTask[HumanoidWalkingTaskConfig]):
         )
 
         action, carry = model.forward(obs_n, carry)
-
-        if self.config.use_delta_actions:
-            action = distrax.Transformed(action, distrax.ScalarAffine(shift=qpos_n))
 
         return action, carry
 
