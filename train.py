@@ -369,6 +369,8 @@ class HumanoidWalkingTask(ksim.PPOTask[HumanoidWalkingTaskConfig]):
         return ksim.MITPositionActuators(
             physics_model=physics_model,
             joint_name_to_metadata=metadata,
+            action_noise=0.1,
+            action_noise_type="gaussian",
         )
 
     def get_physics_randomizers(self, physics_model: ksim.PhysicsModel) -> list[ksim.PhysicsRandomizer]:
