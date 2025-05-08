@@ -43,15 +43,15 @@ async def get_metadata(model_name_or_dir: str, cache: bool = True) -> list[Actua
     else:
         metadata_path = get_robots_dir() / model_name_or_dir / "metadata.json"
 
-    if not cache or not (metadata_path.exists() and not should_refresh_file(metadata_path)):
-        async with K() as api:
-            robot_class = await api.get_robot_class(model_name_or_dir)
-            if (metadata := robot_class.metadata) is None:
-                raise ValueError(f"No metadata found for {model_name_or_dir}")
+        if not cache or not (metadata_path.exists() and not should_refresh_file(metadata_path)):
+            async with K() as api:
+                robot_class = await api.get_robot_class(model_name_or_dir)
+                if (metadata := robot_class.metadata) is None:
+                    raise ValueError(f"No metadata found for {model_name_or_dir}")
 
-        metadata_path.parent.mkdir(parents=True, exist_ok=True)
-        with open(metadata_path, "w") as f:
-            json.dump(metadata.model_dump(), f, indent=2)
+            metadata_path.parent.mkdir(parents=True, exist_ok=True)
+            with open(metadata_path, "w") as f:
+                json.dump(metadata.model_dump(), f, indent=2)
 
     with open(metadata_path, "r") as f:
         metadata = RobotURDFMetadataOutput.model_validate_json(f.read())
@@ -60,7 +60,6 @@ async def get_metadata(model_name_or_dir: str, cache: bool = True) -> list[Actua
         raise ValueError("Joint metadata is not available")
 
     joint_name_to_metadata = metadata.joint_name_to_metadata
-
     actuator_list = [
         Actuator(
             actuator_id=joint_metadata.id,
@@ -205,8 +204,8 @@ async def run_policy(config: DeployConfig, actuator_list: list[Actuator]) -> Non
             inverse=True,
         )
 
-        imu_acc = np.array([imu_values.gyro_x, imu_values.gyro_y, imu_values.gyro_z])
-        imu_gyro = np.array([imu_values.accel_x, imu_values.accel_y, imu_values.accel_z])
+        imu_acc = np.array([imu_values.accel_x, imu_values.accel_y, imu_values.accel_z])
+        imu_gyro = np.array([imu_values.gyro_x, imu_values.gyro_y, imu_values.gyro_z])
 
         return {
             "pos_obs": pos_obs,
