@@ -302,6 +302,20 @@ class Model(eqx.Module):
 class HumanoidWalkingTaskConfig(ksim.PPOConfig):
     """Config for the humanoid walking task."""
 
+    # Task parameters.
+    num_envs: int = xax.field(
+        value=1,
+        help="The number of environments to run in parallel.",
+    )
+    batch_size: int = xax.field(
+        value=1,
+        help="The batch size for the PPO training.",
+    )
+
+    rollout_length_seconds: float = xax.field(
+        value=1.0,
+        help="The length of the rollout in seconds.",
+    )
     # Model parameters.
     hidden_size: int = xax.field(
         value=128,
@@ -338,6 +352,8 @@ class HumanoidWalkingTaskConfig(ksim.PPOConfig):
 
 
 class HumanoidWalkingTask(ksim.PPOTask[HumanoidWalkingTaskConfig]):
+    config: HumanoidWalkingTaskConfig
+
     def get_optimizer(self) -> optax.GradientTransformation:
         optimizer = optax.chain(
             optax.clip_by_global_norm(self.config.max_grad_norm),
@@ -616,12 +632,8 @@ class HumanoidWalkingTask(ksim.PPOTask[HumanoidWalkingTaskConfig]):
 
         # Runs the actor model to get the action distribution.
         action_dist_j, actor_carry = self.run_actor(
-            model=model.actor,
-            observations=observations,
-            commands=commands,
-            carry=actor_carry_in,
+            model=model.actor, observations=observations, commands=commands, carry=actor_carry_in
         )
-
         action_j = action_dist_j.mode() if argmax else action_dist_j.sample(seed=rng)
 
         return ksim.Action(
