@@ -384,7 +384,7 @@ class HumanoidWalkingTask(ksim.PPOTask[HumanoidWalkingTaskConfig]):
         assert metadata is not None, "Metadata is required"
         return ksim.MITPositionActuators(
             physics_model=physics_model,
-            joint_name_to_metadata=metadata.joint_name_to_metadata,
+            metadata=metadata,
         )
 
     def get_physics_randomizers(self, physics_model: ksim.PhysicsModel) -> list[ksim.PhysicsRandomizer]:
