@@ -17,7 +17,7 @@ import mujoco_scenes.mjcf
 import optax
 import xax
 from jaxtyping import Array, PRNGKeyArray
-from kscale.web.gen.api import JointMetadataOutput
+from kscale.web.gen.api import JointMetadataOutput, RobotURDFMetadataOutput, ActuatorMetadataOutput
 
 NUM_JOINTS = 20
 NUM_ACTOR_INPUTS = 49
@@ -368,21 +368,23 @@ class HumanoidWalkingTask(ksim.PPOTask[HumanoidWalkingTaskConfig]):
         mjcf_path = asyncio.run(ksim.get_mujoco_model_path("kbot", name="robot"))
         return mujoco_scenes.mjcf.load_mjmodel(mjcf_path, scene="smooth")
 
-    def get_mujoco_model_metadata(self, mj_model: mujoco.MjModel) -> dict[str, JointMetadataOutput]:
+    def get_mujoco_model_metadata(self, mj_model: mujoco.MjModel) -> RobotURDFMetadataOutput:
         metadata = asyncio.run(ksim.get_mujoco_model_metadata("kbot"))
         if metadata.joint_name_to_metadata is None:
             raise ValueError("Joint metadata is not available")
-        return metadata.joint_name_to_metadata
+        if metadata.actuator_type_to_metadata is None:
+            raise ValueError("Actuator metadata is not available")
+        return metadata
 
     def get_actuators(
         self,
         physics_model: ksim.PhysicsModel,
-        metadata: dict[str, JointMetadataOutput] | None = None,
+        metadata: RobotURDFMetadataOutput | None = None,
     ) -> ksim.Actuators:
         assert metadata is not None, "Metadata is required"
         return ksim.MITPositionActuators(
             physics_model=physics_model,
-            joint_name_to_metadata=metadata,
+            joint_name_to_metadata=metadata.joint_name_to_metadata,
         )
 
     def get_physics_randomizers(self, physics_model: ksim.PhysicsModel) -> list[ksim.PhysicsRandomizer]:
