@@ -17,7 +17,7 @@ import mujoco_scenes.mjcf
 import optax
 import xax
 from jaxtyping import Array, PRNGKeyArray
-from kscale.web.gen.api import JointMetadataOutput, RobotURDFMetadataOutput, ActuatorMetadataOutput
+from kscale.web.gen.api import RobotURDFMetadataOutput
 
 NUM_JOINTS = 20
 NUM_ACTOR_INPUTS = 49
