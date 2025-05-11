@@ -56,12 +56,17 @@ python -m train
 python -m convert /path/to/ckpt.bin /path/to/model.kinfer
 ```
 
-9. Add a video of your new policy to this README
-10. Push your code and model to your repository, and make sure the repository is public
-11. Write a message with a link to your repository on our [Discord](https://url.kscale.dev/discord) in the "【🧠】submissions" channel
-12. Wait for one of us to run it on the real robot - this should take about a day
-13. Voila! Your name will now appear on our [leaderboard](https://url.kscale.dev/leaderboard)
+9. Visualize the converted model:
 
+```bash
+kinfer-sim assets/model.kinfer kbot
+```
+
+10. Add a recording of your policy video to this README
+11. Push your code and model to your repository, and make sure the repository is public
+12. Write a message with a link to your repository on our [Discord](https://url.kscale.dev/discord) in the "【🧠】submissions" channel
+13. Wait for one of us to run it on the real robot - this should take about a day, but if we are dragging our feet, please message us on Discord
+14. Voila! Your name will now appear on our [leaderboard](https://url.kscale.dev/leaderboard)
 
 ## Troubleshooting
 
