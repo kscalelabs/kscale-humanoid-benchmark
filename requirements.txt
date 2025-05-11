@@ -3,6 +3,9 @@
 # Training dependencies
 ksim
 
+# Inference dependencies
+kinfer[jax]
+
 # Jupyter Notebook dependencies
 jupyter
 ipykernel
