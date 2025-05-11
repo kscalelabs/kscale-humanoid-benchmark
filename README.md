@@ -59,10 +59,10 @@ python -m convert /path/to/ckpt.bin /path/to/model.kinfer
 9. Visualize the converted model:
 
 ```bash
-kinfer-sim assets/model.kinfer kbot
+kinfer-sim assets/model.kinfer kbot --save-video assets/video.mp4
 ```
 
-10. Add a recording of your policy video to this README
+10. Commit the K-Infer model and the recorded video to this repository
 11. Push your code and model to your repository, and make sure the repository is public
 12. Write a message with a link to your repository on our [Discord](https://url.kscale.dev/discord) in the "【🧠】submissions" channel
 13. Wait for one of us to run it on the real robot - this should take about a day, but if we are dragging our feet, please message us on Discord
