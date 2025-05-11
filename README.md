@@ -18,7 +18,7 @@ You can use this repository as a GitHub template or as a Google Colab.
 
 You can quickly try out the humanoid benchmark by running the [training notebook](https://colab.research.google.com/github/kscalelabs/kscale-humanoid-benchmark/blob/master/train.ipynb) in Google Colab.
 
-### Template
+### On your own GPU
 
 1. Read through the [current leaderboard](https://url.kscale.dev/leaderboard) submissions and through the [ksim examples](https://github.com/kscalelabs/ksim/tree/master/examples)
 2. Create a new repository from this template by clicking [here](https://github.com/new?template_name=kscale-humanoid-benchmark&template_owner=kscalelabs)
@@ -83,7 +83,7 @@ python -m train --help
 To visualize running your model without using `kos-sim`, use the command:
 
 ```bash
-python -m train run_model_viewer=True
+python -m train run_mode=view
 ```
 
 This repository contains a pre-trained checkpoint, which is useful for both jump-starting model training and understanding the codebase. To initialize training from this checkpoint, use the command:
