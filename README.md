@@ -50,10 +50,10 @@ pip install 'jax[cuda12]'  # If using GPU machine, install Jax CUDA libraries
 python -m train
 ```
 
-8. Update the policy weights in `assets` and run the deployment script on your new policy:
+8. Convert the checkpoint to a `kinfer` model:
 
 ```bash
-python -m deploy
+python -m convert /path/to/ckpt.bin /path/to/model.kinfer
 ```
 
 9. Add a video of your new policy to this README
