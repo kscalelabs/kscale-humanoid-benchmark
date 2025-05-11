@@ -3,11 +3,6 @@
 # Training dependencies
 ksim
 
-# Inference dependencies
-kos-sim
-xax[exportable]
-tabulate
-
 # Jupyter Notebook dependencies
 jupyter
 ipykernel
