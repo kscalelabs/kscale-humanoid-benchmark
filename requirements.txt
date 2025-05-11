@@ -4,9 +4,7 @@
 ksim
 
 # Inference dependencies
-kos-sim
-xax[exportable]
-tabulate
+kinfer[jax]
 
 # Jupyter Notebook dependencies
 jupyter
