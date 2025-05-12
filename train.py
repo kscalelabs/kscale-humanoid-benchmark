@@ -385,6 +385,8 @@ class HumanoidWalkingTask(ksim.PPOTask[HumanoidWalkingTaskConfig]):
         return ksim.MITPositionActuators(
             physics_model=physics_model,
             metadata=metadata,
+            torque_noise=0.5,
+            torque_noise_type="gaussian",
         )
 
     def get_physics_randomizers(self, physics_model: ksim.PhysicsModel) -> list[ksim.PhysicsRandomizer]:
@@ -399,13 +401,13 @@ class HumanoidWalkingTask(ksim.PPOTask[HumanoidWalkingTaskConfig]):
     def get_events(self, physics_model: ksim.PhysicsModel) -> list[ksim.Event]:
         return [
             ksim.PushEvent(
-                x_force=3.0,
-                y_force=3.0,
+                x_force=0.5,
+                y_force=0.5,
                 z_force=0.3,
                 force_range=(0.5, 1.0),
-                x_angular_force=0.1,
-                y_angular_force=0.1,
-                z_angular_force=1.0,
+                x_angular_force=0.05,
+                y_angular_force=0.05,
+                z_angular_force=0.1,
                 interval_range=(0.5, 4.0),
             ),
         ]
