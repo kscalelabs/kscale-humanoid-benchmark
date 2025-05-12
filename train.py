@@ -20,31 +20,31 @@ from jaxtyping import Array, PRNGKeyArray
 from kscale.web.gen.api import RobotURDFMetadataOutput
 
 NUM_JOINTS = 20
-NUM_ACTOR_INPUTS = 49
-NUM_CRITIC_INPUTS = 444
+NUM_ACTOR_INPUTS = 56
+NUM_CRITIC_INPUTS = 451
 
 # These are in the order of the neural network outputs.
 ZEROS: list[tuple[str, float]] = [
     ("dof_right_shoulder_pitch_03", 0.0),
     ("dof_right_shoulder_roll_03", math.radians(-10.0)),
     ("dof_right_shoulder_yaw_02", 0.0),
-    ("dof_right_elbow_02", math.radians(15.0)),
+    ("dof_right_elbow_02", math.radians(90.0)),
     ("dof_right_wrist_00", 0.0),
     ("dof_left_shoulder_pitch_03", 0.0),
     ("dof_left_shoulder_roll_03", math.radians(10.0)),
     ("dof_left_shoulder_yaw_02", 0.0),
-    ("dof_left_elbow_02", math.radians(-15.0)),
+    ("dof_left_elbow_02", math.radians(-90.0)),
     ("dof_left_wrist_00", 0.0),
-    ("dof_right_hip_pitch_04", math.radians(-25.0)),
-    ("dof_right_hip_roll_03", math.radians(-5.0)),
+    ("dof_right_hip_pitch_04", math.radians(-10.0)),
+    ("dof_right_hip_roll_03", math.radians(-0.0)),
     ("dof_right_hip_yaw_03", 0.0),
-    ("dof_right_knee_04", math.radians(-50.0)),
-    ("dof_right_ankle_02", math.radians(25.0)),
-    ("dof_left_hip_pitch_04", math.radians(25.0)),
-    ("dof_left_hip_roll_03", math.radians(5.0)),
+    ("dof_right_knee_04", math.radians(-30.0)),
+    ("dof_right_ankle_02", math.radians(20.0)),
+    ("dof_left_hip_pitch_04", math.radians(10.0)),
+    ("dof_left_hip_roll_03", math.radians(0.0)),
     ("dof_left_hip_yaw_03", 0.0),
-    ("dof_left_knee_04", math.radians(50.0)),
-    ("dof_left_ankle_02", math.radians(-25.0)),
+    ("dof_left_knee_04", math.radians(30.0)),
+    ("dof_left_ankle_02", math.radians(-20.0)),
 ]
 
 
@@ -109,10 +109,8 @@ class StraightLegPenalty(JointPositionPenalty):
     ) -> Self:
         return cls.create_from_names(
             names=[
-                "dof_left_hip_pitch_04",
                 "dof_left_hip_roll_03",
                 "dof_left_hip_yaw_03",
-                "dof_right_hip_pitch_04",
                 "dof_right_hip_roll_03",
                 "dof_right_hip_yaw_03",
             ],
@@ -382,10 +380,10 @@ class HumanoidWalkingTask(ksim.PPOTask[HumanoidWalkingTaskConfig]):
         metadata: RobotURDFMetadataOutput | None = None,
     ) -> ksim.Actuators:
         assert metadata is not None, "Metadata is required"
-        return ksim.MITPositionActuators(
+        return ksim.PositionActuators(
             physics_model=physics_model,
             metadata=metadata,
-            torque_noise=0.5,
+            torque_noise=0.1,
             torque_noise_type="gaussian",
         )
 
@@ -416,7 +414,6 @@ class HumanoidWalkingTask(ksim.PPOTask[HumanoidWalkingTaskConfig]):
         return [
             ksim.RandomJointPositionReset.create(physics_model, {k: v for k, v in ZEROS}, scale=0.1),
             ksim.RandomJointVelocityReset(),
-            ksim.RandomHeadingReset(),
         ]
 
     def get_observations(self, physics_model: ksim.PhysicsModel) -> list[ksim.Observation]:
@@ -457,23 +454,28 @@ class HumanoidWalkingTask(ksim.PPOTask[HumanoidWalkingTaskConfig]):
         ]
 
     def get_commands(self, physics_model: ksim.PhysicsModel) -> list[ksim.Command]:
-        return []
+        return [
+            ksim.JoystickCommand(),
+        ]
 
     def get_rewards(self, physics_model: ksim.PhysicsModel) -> list[ksim.Reward]:
         return [
             # Standard rewards.
             ksim.StayAliveReward(scale=1.0),
             ksim.UprightReward(scale=1.0),
-            # Avoid movement penalties.
-            ksim.AngularVelocityPenalty(index=("x", "y", "z"), scale=-0.005),
-            ksim.LinearVelocityPenalty(index=("x", "y", "z"), scale=-0.005),
+            ksim.JoystickReward(
+                forward_speed=2.0,
+                backward_speed=1.0,
+                strafe_speed=1.0,
+                rotation_speed=math.radians(90),
+                scale=1.0,
+            ),
             # Normalization penalties.
-            ksim.ActionInBoundsReward.create(physics_model, scale=0.01),
+            ksim.JointAccelerationPenalty(scale=-0.1),
+            ksim.JointJerkPenalty(scale=-0.1),
+            ksim.LinkAccelerationPenalty(scale=-0.1),
+            ksim.LinkJerkPenalty(scale=-0.1),
             ksim.AvoidLimitsPenalty.create(physics_model, scale=-0.01),
-            ksim.ActionNearPositionPenalty(joint_threshold=math.radians(2.0), scale=-0.01),
-            ksim.JointVelocityPenalty(scale=-0.01, scale_by_curriculum=True),
-            ksim.ActionSmoothnessPenalty(scale=-0.01),
-            ksim.ActuatorRelativeForcePenalty.create(physics_model, scale=-0.01),
             # Bespoke rewards.
             BentArmPenalty.create_penalty(physics_model, scale=-0.1),
             StraightLegPenalty.create_penalty(physics_model, scale=-0.1),
@@ -498,7 +500,7 @@ class HumanoidWalkingTask(ksim.PPOTask[HumanoidWalkingTaskConfig]):
             key,
             num_inputs=NUM_ACTOR_INPUTS,
             num_outputs=NUM_JOINTS,
-            min_std=0.01,
+            min_std=0.0001,
             max_std=1.0,
             hidden_size=self.config.hidden_size,
             num_mixtures=self.config.num_mixtures,
@@ -517,6 +519,7 @@ class HumanoidWalkingTask(ksim.PPOTask[HumanoidWalkingTaskConfig]):
         proj_grav_3 = observations["projected_gravity_observation"]
         imu_acc_3 = observations["sensor_observation_imu_acc"]
         imu_gyro_3 = observations["sensor_observation_imu_gyro"]
+        joystick_cmd_ohe_7 = commands["joystick_command"]
 
         obs_n = jnp.concatenate(
             [
@@ -525,6 +528,7 @@ class HumanoidWalkingTask(ksim.PPOTask[HumanoidWalkingTaskConfig]):
                 proj_grav_3,  # 3
                 imu_acc_3,  # 3
                 imu_gyro_3,  # 3
+                joystick_cmd_ohe_7,  # 7
             ],
             axis=-1,
         )
@@ -550,6 +554,7 @@ class HumanoidWalkingTask(ksim.PPOTask[HumanoidWalkingTaskConfig]):
         act_frc_obs_n = observations["actuator_force_observation"]
         base_pos_3 = observations["base_position_observation"]
         base_quat_4 = observations["base_orientation_observation"]
+        joystick_cmd_ohe_7 = commands["joystick_command"]
 
         obs_n = jnp.concatenate(
             [
@@ -563,6 +568,7 @@ class HumanoidWalkingTask(ksim.PPOTask[HumanoidWalkingTaskConfig]):
                 act_frc_obs_n / 100.0,  # NUM_JOINTS
                 base_pos_3,  # 3
                 base_quat_4,  # 4
+                joystick_cmd_ohe_7,  # 7
             ],
             axis=-1,
         )
@@ -662,7 +668,7 @@ if __name__ == "__main__":
             ctrl_dt=0.02,
             iterations=8,
             ls_iterations=8,
-            max_action_latency=0.01,
+            action_latency_range=(0.005, 0.01),  # Simulate 5-10ms of latency.
             # Checkpointing parameters.
             save_every_n_seconds=60,
         ),
