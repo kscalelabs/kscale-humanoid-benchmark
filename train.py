@@ -65,6 +65,10 @@ class HumanoidWalkingTaskConfig(ksim.PPOConfig):
         value=5,
         help="The number of mixtures for the actor.",
     )
+    var_scale: float = xax.field(
+        value=0.75,
+        help="The scale for the standard deviations of the actor.",
+    )
 
     # Optimizer parameters.
     learning_rate: float = xax.field(
@@ -307,6 +311,7 @@ class Model(eqx.Module):
         num_outputs: int,
         min_std: float,
         max_std: float,
+        var_scale: float,
         hidden_size: int,
         num_mixtures: int,
         depth: int,
@@ -317,7 +322,7 @@ class Model(eqx.Module):
             num_outputs=num_outputs,
             min_std=min_std,
             max_std=max_std,
-            var_scale=0.75,
+            var_scale=var_scale,
             hidden_size=hidden_size,
             num_mixtures=num_mixtures,
             depth=depth,
@@ -440,7 +445,7 @@ class HumanoidWalkingTask(ksim.PPOTask[HumanoidWalkingTaskConfig]):
         return [
             # Standard rewards.
             ksim.StayAliveReward(scale=1.0),
-            ksim.UprightReward(scale=1.0),
+            ksim.UprightReward(scale=3.0),
             ksim.JoystickReward(
                 forward_speed=2.0,
                 backward_speed=1.0,
@@ -480,6 +485,7 @@ class HumanoidWalkingTask(ksim.PPOTask[HumanoidWalkingTaskConfig]):
             num_outputs=NUM_JOINTS,
             min_std=0.0001,
             max_std=1.0,
+            var_scale=self.config.var_scale,
             hidden_size=self.config.hidden_size,
             num_mixtures=self.config.num_mixtures,
             depth=self.config.depth,
