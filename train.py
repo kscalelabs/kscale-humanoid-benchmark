@@ -469,7 +469,6 @@ class HumanoidWalkingTask(ksim.PPOTask[HumanoidWalkingTaskConfig]):
         return [
             ksim.BadZTermination(unhealthy_z_lower=-0.5, unhealthy_z_upper=0.5),
             ksim.NotUprightTermination(max_radians=math.radians(60)),
-            ksim.HighVelocityTermination(),
             ksim.FarFromOriginTermination(max_dist=10.0),
         ]
 
