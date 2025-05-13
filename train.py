@@ -300,20 +300,6 @@ class Model(eqx.Module):
 class HumanoidWalkingTaskConfig(ksim.PPOConfig):
     """Config for the humanoid walking task."""
 
-    # Task parameters.
-    num_envs: int = xax.field(
-        value=1,
-        help="The number of environments to run in parallel.",
-    )
-    batch_size: int = xax.field(
-        value=1,
-        help="The batch size for the PPO training.",
-    )
-
-    rollout_length_seconds: float = xax.field(
-        value=1.0,
-        help="The length of the rollout in seconds.",
-    )
     # Model parameters.
     hidden_size: int = xax.field(
         value=128,
@@ -340,12 +326,6 @@ class HumanoidWalkingTaskConfig(ksim.PPOConfig):
     adam_weight_decay: float = xax.field(
         value=1e-5,
         help="Weight decay for the Adam optimizer.",
-    )
-
-    # Rendering parameters.
-    render_track_body_id: int | None = xax.field(
-        value=0,
-        help="The body id to track with the render camera.",
     )
 
 
@@ -471,11 +451,11 @@ class HumanoidWalkingTask(ksim.PPOTask[HumanoidWalkingTaskConfig]):
                 scale=1.0,
             ),
             # Normalization penalties.
+            ksim.AvoidLimitsPenalty.create(physics_model, scale=-0.1),
             ksim.JointAccelerationPenalty(scale=-0.01),
             ksim.JointJerkPenalty(scale=-0.01),
             ksim.LinkAccelerationPenalty(scale=-0.01),
             ksim.LinkJerkPenalty(scale=-0.01),
-            ksim.AvoidLimitsPenalty.create(physics_model, scale=-0.01),
             # Bespoke rewards.
             BentArmPenalty.create_penalty(physics_model, scale=-0.1),
             StraightLegPenalty.create_penalty(physics_model, scale=-0.1),
@@ -670,7 +650,10 @@ if __name__ == "__main__":
             ctrl_dt=0.02,
             iterations=8,
             ls_iterations=8,
-            action_latency_range=(0.005, 0.015),  # Simulate 5-15ms of latency.
+            action_latency_range=(0.003, 0.01),  # Simulate 3-10ms of latency.
+            drop_action_prob=0.05,  # Drop 5% of commands.
+            # Visualization parameters.
+            render_track_body_id=0,
             # Checkpointing parameters.
             save_every_n_seconds=60,
         ),
