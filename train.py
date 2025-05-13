@@ -70,6 +70,24 @@ class HumanoidWalkingTaskConfig(ksim.PPOConfig):
         help="Whether to use the IMU acceleration and gyroscope observations.",
     )
 
+    # Curriculum parameters.
+    num_curriculum_levels: int = xax.field(
+        value=10,
+        help="The number of curriculum levels to use.",
+    )
+    increase_threshold: float = xax.field(
+        value=3.0,
+        help="Increase the curriculum level when the mean trajectory length is above this threshold.",
+    )
+    decrease_threshold: float = xax.field(
+        value=1.0,
+        help="Decrease the curriculum level when the mean trajectory length is below this threshold.",
+    )
+    min_level_steps: int = xax.field(
+        value=50,
+        help="The minimum number of steps to wait before changing the curriculum level.",
+    )
+
     # Optimizer parameters.
     learning_rate: float = xax.field(
         value=3e-4,
@@ -193,6 +211,7 @@ class Actor(eqx.Module):
 
         # Create RNN layer
         key, rnn_key = jax.random.split(key)
+        rnn_keys = jax.random.split(rnn_key, depth)
         self.rnns = tuple(
             [
                 eqx.nn.GRUCell(
@@ -200,7 +219,7 @@ class Actor(eqx.Module):
                     hidden_size=hidden_size,
                     key=rnn_key,
                 )
-                for _ in range(depth)
+                for rnn_key in rnn_keys
             ]
         )
 
@@ -271,6 +290,7 @@ class Critic(eqx.Module):
 
         # Create RNN layer
         key, rnn_key = jax.random.split(key)
+        rnn_keys = jax.random.split(rnn_key, depth)
         self.rnns = tuple(
             [
                 eqx.nn.GRUCell(
@@ -278,7 +298,7 @@ class Critic(eqx.Module):
                     hidden_size=hidden_size,
                     key=rnn_key,
                 )
-                for _ in range(depth)
+                for rnn_key in rnn_keys
             ]
         )
 
@@ -406,6 +426,7 @@ class HumanoidWalkingTask(ksim.PPOTask[HumanoidWalkingTaskConfig]):
 
     def get_observations(self, physics_model: ksim.PhysicsModel) -> list[ksim.Observation]:
         return [
+            ksim.TimestepObservation(),
             ksim.JointPositionObservation(noise=math.radians(2)),
             ksim.JointVelocityObservation(noise=math.radians(10)),
             ksim.ActuatorForceObservation(),
@@ -477,18 +498,20 @@ class HumanoidWalkingTask(ksim.PPOTask[HumanoidWalkingTaskConfig]):
         ]
 
     def get_curriculum(self, physics_model: ksim.PhysicsModel) -> ksim.Curriculum:
-        return ksim.LinearCurriculum(
-            step_size=0.01,
-            step_every_n_epochs=10,
+        return ksim.EpisodeLengthCurriculum(
+            num_levels=self.config.num_curriculum_levels,
+            increase_threshold=self.config.increase_threshold,
+            decrease_threshold=self.config.decrease_threshold,
+            min_level_steps=self.config.min_level_steps,
         )
 
     def get_model(self, key: PRNGKeyArray) -> Model:
         return Model(
             key,
-            num_actor_inputs=56 if self.config.use_acc_gyro else 50,
+            num_actor_inputs=58 if self.config.use_acc_gyro else 52,
             num_actor_outputs=len(ZEROS),
-            num_critic_inputs=451,
-            min_std=0.0001,
+            num_critic_inputs=453,
+            min_std=0.01,
             max_std=1.0,
             var_scale=self.config.var_scale,
             hidden_size=self.config.hidden_size,
@@ -503,6 +526,7 @@ class HumanoidWalkingTask(ksim.PPOTask[HumanoidWalkingTaskConfig]):
         commands: xax.FrozenDict[str, Array],
         carry: Array,
     ) -> tuple[distrax.Distribution, Array]:
+        time_1 = observations["timestep_observation"]
         joint_pos_n = observations["joint_position_observation"]
         joint_vel_n = observations["joint_velocity_observation"]
         proj_grav_3 = observations["projected_gravity_observation"]
@@ -511,6 +535,8 @@ class HumanoidWalkingTask(ksim.PPOTask[HumanoidWalkingTaskConfig]):
         joystick_cmd_ohe_7 = commands["joystick_command"]
 
         obs = [
+            jnp.sin(time_1),
+            jnp.cos(time_1),
             joint_pos_n,  # NUM_JOINTS
             joint_vel_n,  # NUM_JOINTS
             proj_grav_3,  # 3
@@ -534,6 +560,7 @@ class HumanoidWalkingTask(ksim.PPOTask[HumanoidWalkingTaskConfig]):
         commands: xax.FrozenDict[str, Array],
         carry: Array,
     ) -> tuple[Array, Array]:
+        time_1 = observations["timestep_observation"]
         dh_joint_pos_j = observations["joint_position_observation"]
         dh_joint_vel_j = observations["joint_velocity_observation"]
         com_inertia_n = observations["center_of_mass_inertia_observation"]
@@ -548,6 +575,8 @@ class HumanoidWalkingTask(ksim.PPOTask[HumanoidWalkingTaskConfig]):
 
         obs_n = jnp.concatenate(
             [
+                jnp.sin(time_1),
+                jnp.cos(time_1),
                 dh_joint_pos_j,  # NUM_JOINTS
                 dh_joint_vel_j / 10.0,  # NUM_JOINTS
                 com_inertia_n,  # 160
