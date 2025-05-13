@@ -48,6 +48,39 @@ ZEROS: list[tuple[str, float]] = [
 ]
 
 
+@dataclass
+class HumanoidWalkingTaskConfig(ksim.PPOConfig):
+    """Config for the humanoid walking task."""
+
+    # Model parameters.
+    hidden_size: int = xax.field(
+        value=128,
+        help="The hidden size for the MLPs.",
+    )
+    depth: int = xax.field(
+        value=5,
+        help="The depth for the MLPs.",
+    )
+    num_mixtures: int = xax.field(
+        value=5,
+        help="The number of mixtures for the actor.",
+    )
+
+    # Optimizer parameters.
+    learning_rate: float = xax.field(
+        value=3e-4,
+        help="Learning rate for PPO.",
+    )
+    max_grad_norm: float = xax.field(
+        value=2.0,
+        help="Maximum gradient norm for clipping.",
+    )
+    adam_weight_decay: float = xax.field(
+        value=1e-5,
+        help="Weight decay for the Adam optimizer.",
+    )
+
+
 @attrs.define(frozen=True, kw_only=True)
 class JointPositionPenalty(ksim.JointDeviationPenalty):
     @classmethod
@@ -284,7 +317,7 @@ class Model(eqx.Module):
             num_outputs=num_outputs,
             min_std=min_std,
             max_std=max_std,
-            var_scale=1.0,
+            var_scale=0.75,
             hidden_size=hidden_size,
             num_mixtures=num_mixtures,
             depth=depth,
@@ -294,39 +327,6 @@ class Model(eqx.Module):
             hidden_size=hidden_size,
             depth=depth,
         )
-
-
-@dataclass
-class HumanoidWalkingTaskConfig(ksim.PPOConfig):
-    """Config for the humanoid walking task."""
-
-    # Model parameters.
-    hidden_size: int = xax.field(
-        value=128,
-        help="The hidden size for the MLPs.",
-    )
-    depth: int = xax.field(
-        value=5,
-        help="The depth for the MLPs.",
-    )
-    num_mixtures: int = xax.field(
-        value=5,
-        help="The number of mixtures for the actor.",
-    )
-
-    # Optimizer parameters.
-    learning_rate: float = xax.field(
-        value=3e-4,
-        help="Learning rate for PPO.",
-    )
-    max_grad_norm: float = xax.field(
-        value=2.0,
-        help="Maximum gradient norm for clipping.",
-    )
-    adam_weight_decay: float = xax.field(
-        value=1e-5,
-        help="Weight decay for the Adam optimizer.",
-    )
 
 
 class HumanoidWalkingTask(ksim.PPOTask[HumanoidWalkingTaskConfig]):
@@ -363,8 +363,6 @@ class HumanoidWalkingTask(ksim.PPOTask[HumanoidWalkingTaskConfig]):
         return ksim.PositionActuators(
             physics_model=physics_model,
             metadata=metadata,
-            torque_noise=0.1,
-            torque_noise_type="gaussian",
         )
 
     def get_physics_randomizers(self, physics_model: ksim.PhysicsModel) -> list[ksim.PhysicsRandomizer]:
@@ -463,7 +461,7 @@ class HumanoidWalkingTask(ksim.PPOTask[HumanoidWalkingTaskConfig]):
 
     def get_terminations(self, physics_model: ksim.PhysicsModel) -> list[ksim.Termination]:
         return [
-            ksim.BadZTermination(unhealthy_z_lower=0.4, unhealthy_z_upper=1.6),
+            ksim.BadZTermination(unhealthy_z_lower=-0.5, unhealthy_z_upper=0.5),
             ksim.NotUprightTermination(max_radians=math.radians(60)),
             ksim.HighVelocityTermination(),
             ksim.FarFromOriginTermination(max_dist=10.0),
@@ -620,8 +618,6 @@ class HumanoidWalkingTask(ksim.PPOTask[HumanoidWalkingTaskConfig]):
         argmax: bool,
     ) -> ksim.Action:
         actor_carry_in, critic_carry_in = model_carry
-
-        # Runs the actor model to get the action distribution.
         action_dist_j, actor_carry = self.run_actor(
             model=model.actor,
             observations=observations,
@@ -629,11 +625,7 @@ class HumanoidWalkingTask(ksim.PPOTask[HumanoidWalkingTaskConfig]):
             carry=actor_carry_in,
         )
         action_j = action_dist_j.mode() if argmax else action_dist_j.sample(seed=rng)
-
-        return ksim.Action(
-            action=action_j,
-            carry=(actor_carry, critic_carry_in),
-        )
+        return ksim.Action(action=action_j, carry=(actor_carry, critic_carry_in))
 
 
 if __name__ == "__main__":
