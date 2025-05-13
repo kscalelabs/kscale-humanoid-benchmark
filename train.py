@@ -403,9 +403,9 @@ class HumanoidWalkingTask(ksim.PPOTask[HumanoidWalkingTaskConfig]):
                 y_force=0.5,
                 z_force=0.3,
                 force_range=(0.5, 1.0),
-                x_angular_force=0.05,
-                y_angular_force=0.05,
-                z_angular_force=0.1,
+                x_angular_force=0.0,
+                y_angular_force=0.0,
+                z_angular_force=0.0,
                 interval_range=(0.5, 4.0),
             ),
         ]
@@ -467,14 +467,14 @@ class HumanoidWalkingTask(ksim.PPOTask[HumanoidWalkingTaskConfig]):
                 forward_speed=2.0,
                 backward_speed=1.0,
                 strafe_speed=1.0,
-                rotation_speed=math.radians(90),
+                rotation_speed=math.radians(30),
                 scale=1.0,
             ),
             # Normalization penalties.
-            ksim.JointAccelerationPenalty(scale=-0.1),
-            ksim.JointJerkPenalty(scale=-0.1),
-            ksim.LinkAccelerationPenalty(scale=-0.1),
-            ksim.LinkJerkPenalty(scale=-0.1),
+            ksim.JointAccelerationPenalty(scale=-0.01),
+            ksim.JointJerkPenalty(scale=-0.01),
+            ksim.LinkAccelerationPenalty(scale=-0.01),
+            ksim.LinkJerkPenalty(scale=-0.01),
             ksim.AvoidLimitsPenalty.create(physics_model, scale=-0.01),
             # Bespoke rewards.
             BentArmPenalty.create_penalty(physics_model, scale=-0.1),
@@ -586,15 +586,18 @@ class HumanoidWalkingTask(ksim.PPOTask[HumanoidWalkingTaskConfig]):
             actor_critic_carry: tuple[Array, Array],
             transition: ksim.Trajectory,
         ) -> tuple[tuple[Array, Array], ksim.PPOVariables]:
-            actor_carry, critic_carry = actor_critic_carry
+            actor_carry, critic_carry = model_carry
             actor_dist, next_actor_carry = self.run_actor(
                 model=model.actor,
                 observations=transition.obs,
                 commands=transition.command,
                 carry=actor_carry,
             )
+
+            # Gets the log probabilities of the action.
             log_probs = actor_dist.log_prob(transition.action)
             assert isinstance(log_probs, Array)
+
             value, next_critic_carry = self.run_critic(
                 model=model.critic,
                 observations=transition.obs,
@@ -650,7 +653,6 @@ class HumanoidWalkingTask(ksim.PPOTask[HumanoidWalkingTaskConfig]):
         return ksim.Action(
             action=action_j,
             carry=(actor_carry, critic_carry_in),
-            aux_outputs=None,
         )
 
 
@@ -668,7 +670,7 @@ if __name__ == "__main__":
             ctrl_dt=0.02,
             iterations=8,
             ls_iterations=8,
-            action_latency_range=(0.005, 0.01),  # Simulate 5-10ms of latency.
+            action_latency_range=(0.005, 0.015),  # Simulate 5-15ms of latency.
             # Checkpointing parameters.
             save_every_n_seconds=60,
         ),
