@@ -449,7 +449,7 @@ class HumanoidWalkingTask(ksim.PPOTask[HumanoidWalkingTaskConfig]):
     def get_rewards(self, physics_model: ksim.PhysicsModel) -> list[ksim.Reward]:
         return [
             # Standard rewards.
-            ksim.StayAliveReward(scale=1.0),
+            ksim.StayAliveReward(scale=5.0),
             ksim.JoystickReward(
                 forward_speed=2.0,
                 backward_speed=1.0,
@@ -457,7 +457,7 @@ class HumanoidWalkingTask(ksim.PPOTask[HumanoidWalkingTaskConfig]):
                 rotation_speed=math.radians(30),
                 scale=1.0,
             ),
-            ksim.UprightReward(scale=0.1),
+            ksim.UprightReward(scale=0.5),
             # Normalization penalties.
             ksim.AvoidLimitsPenalty.create(physics_model, scale=-0.1),
             ksim.JointAccelerationPenalty(scale=-0.01),
