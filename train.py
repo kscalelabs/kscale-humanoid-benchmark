@@ -19,10 +19,6 @@ import xax
 from jaxtyping import Array, PRNGKeyArray
 from kscale.web.gen.api import RobotURDFMetadataOutput
 
-NUM_JOINTS = 20
-NUM_ACTOR_INPUTS = 56
-NUM_CRITIC_INPUTS = 451
-
 # These are in the order of the neural network outputs.
 ZEROS: list[tuple[str, float]] = [
     ("dof_right_shoulder_pitch_03", 0.0),
@@ -35,16 +31,16 @@ ZEROS: list[tuple[str, float]] = [
     ("dof_left_shoulder_yaw_02", 0.0),
     ("dof_left_elbow_02", math.radians(-90.0)),
     ("dof_left_wrist_00", 0.0),
-    ("dof_right_hip_pitch_04", math.radians(-10.0)),
+    ("dof_right_hip_pitch_04", math.radians(-20.0)),
     ("dof_right_hip_roll_03", math.radians(-0.0)),
     ("dof_right_hip_yaw_03", 0.0),
-    ("dof_right_knee_04", math.radians(-30.0)),
-    ("dof_right_ankle_02", math.radians(20.0)),
-    ("dof_left_hip_pitch_04", math.radians(10.0)),
+    ("dof_right_knee_04", math.radians(-50.0)),
+    ("dof_right_ankle_02", math.radians(30.0)),
+    ("dof_left_hip_pitch_04", math.radians(20.0)),
     ("dof_left_hip_roll_03", math.radians(0.0)),
     ("dof_left_hip_yaw_03", 0.0),
-    ("dof_left_knee_04", math.radians(30.0)),
-    ("dof_left_ankle_02", math.radians(-20.0)),
+    ("dof_left_knee_04", math.radians(50.0)),
+    ("dof_left_ankle_02", math.radians(-30.0)),
 ]
 
 
@@ -227,10 +223,10 @@ class Actor(eqx.Module):
         out_n = self.output_proj(x_n)
 
         # Reshape the output to be a mixture of gaussians.
-        slice_len = NUM_JOINTS * self.num_mixtures
-        mean_nm = out_n[..., :slice_len].reshape(NUM_JOINTS, self.num_mixtures)
-        std_nm = out_n[..., slice_len : slice_len * 2].reshape(NUM_JOINTS, self.num_mixtures)
-        logits_nm = out_n[..., slice_len * 2 :].reshape(NUM_JOINTS, self.num_mixtures)
+        slice_len = self.num_outputs * self.num_mixtures
+        mean_nm = out_n[..., :slice_len].reshape(self.num_outputs, self.num_mixtures)
+        std_nm = out_n[..., slice_len : slice_len * 2].reshape(self.num_outputs, self.num_mixtures)
+        logits_nm = out_n[..., slice_len * 2 :].reshape(self.num_outputs, self.num_mixtures)
 
         # Softplus and clip to ensure positive standard deviations.
         std_nm = jnp.clip((jax.nn.softplus(std_nm) + self.min_std) * self.var_scale, max=self.max_std)
@@ -249,15 +245,16 @@ class Critic(eqx.Module):
     input_proj: eqx.nn.Linear
     rnns: tuple[eqx.nn.GRUCell, ...]
     output_proj: eqx.nn.Linear
+    num_inputs: int = eqx.static_field()
 
     def __init__(
         self,
         key: PRNGKeyArray,
         *,
+        num_inputs: int,
         hidden_size: int,
         depth: int,
     ) -> None:
-        num_inputs = NUM_CRITIC_INPUTS
         num_outputs = 1
 
         # Project input to hidden size
@@ -288,6 +285,8 @@ class Critic(eqx.Module):
             key=key,
         )
 
+        self.num_inputs = num_inputs
+
     def forward(self, obs_n: Array, carry: Array) -> tuple[Array, Array]:
         x_n = self.input_proj(obs_n)
         out_carries = []
@@ -307,8 +306,9 @@ class Model(eqx.Module):
         self,
         key: PRNGKeyArray,
         *,
-        num_inputs: int,
-        num_outputs: int,
+        num_actor_inputs: int,
+        num_actor_outputs: int,
+        num_critic_inputs: int,
         min_std: float,
         max_std: float,
         var_scale: float,
@@ -318,8 +318,8 @@ class Model(eqx.Module):
     ) -> None:
         self.actor = Actor(
             key,
-            num_inputs=num_inputs,
-            num_outputs=num_outputs,
+            num_inputs=num_actor_inputs,
+            num_outputs=num_actor_outputs,
             min_std=min_std,
             max_std=max_std,
             var_scale=var_scale,
@@ -331,6 +331,7 @@ class Model(eqx.Module):
             key,
             hidden_size=hidden_size,
             depth=depth,
+            num_inputs=num_critic_inputs,
         )
 
 
@@ -481,8 +482,9 @@ class HumanoidWalkingTask(ksim.PPOTask[HumanoidWalkingTaskConfig]):
     def get_model(self, key: PRNGKeyArray) -> Model:
         return Model(
             key,
-            num_inputs=NUM_ACTOR_INPUTS,
-            num_outputs=NUM_JOINTS,
+            num_actor_inputs=56,
+            num_actor_outputs=len(ZEROS),
+            num_critic_inputs=451,
             min_std=0.0001,
             max_std=1.0,
             var_scale=self.config.var_scale,
