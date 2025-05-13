@@ -62,8 +62,12 @@ class HumanoidWalkingTaskConfig(ksim.PPOConfig):
         help="The number of mixtures for the actor.",
     )
     var_scale: float = xax.field(
-        value=0.75,
+        value=0.5,
         help="The scale for the standard deviations of the actor.",
+    )
+    use_acc_gyro: bool = xax.field(
+        value=True,
+        help="Whether to use the IMU acceleration and gyroscope observations.",
     )
 
     # Optimizer parameters.
@@ -446,7 +450,6 @@ class HumanoidWalkingTask(ksim.PPOTask[HumanoidWalkingTaskConfig]):
         return [
             # Standard rewards.
             ksim.StayAliveReward(scale=1.0),
-            ksim.UprightReward(scale=1.0),
             ksim.JoystickReward(
                 forward_speed=2.0,
                 backward_speed=1.0,
@@ -454,6 +457,7 @@ class HumanoidWalkingTask(ksim.PPOTask[HumanoidWalkingTaskConfig]):
                 rotation_speed=math.radians(30),
                 scale=1.0,
             ),
+            ksim.UprightReward(scale=0.1),
             # Normalization penalties.
             ksim.AvoidLimitsPenalty.create(physics_model, scale=-0.1),
             ksim.JointAccelerationPenalty(scale=-0.01),
@@ -481,7 +485,7 @@ class HumanoidWalkingTask(ksim.PPOTask[HumanoidWalkingTaskConfig]):
     def get_model(self, key: PRNGKeyArray) -> Model:
         return Model(
             key,
-            num_actor_inputs=56,
+            num_actor_inputs=56 if self.config.use_acc_gyro else 50,
             num_actor_outputs=len(ZEROS),
             num_critic_inputs=451,
             min_std=0.0001,
@@ -506,18 +510,19 @@ class HumanoidWalkingTask(ksim.PPOTask[HumanoidWalkingTaskConfig]):
         imu_gyro_3 = observations["sensor_observation_imu_gyro"]
         joystick_cmd_ohe_7 = commands["joystick_command"]
 
-        obs_n = jnp.concatenate(
-            [
-                joint_pos_n,  # NUM_JOINTS
-                joint_vel_n,  # NUM_JOINTS
-                proj_grav_3,  # 3
+        obs = [
+            joint_pos_n,  # NUM_JOINTS
+            joint_vel_n,  # NUM_JOINTS
+            proj_grav_3,  # 3
+            joystick_cmd_ohe_7,  # 7
+        ]
+        if self.config.use_acc_gyro:
+            obs += [
                 imu_acc_3,  # 3
                 imu_gyro_3,  # 3
-                joystick_cmd_ohe_7,  # 7
-            ],
-            axis=-1,
-        )
+            ]
 
+        obs_n = jnp.concatenate(obs, axis=-1)
         action, carry = model.forward(obs_n, carry)
 
         return action, carry
