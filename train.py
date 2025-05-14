@@ -475,10 +475,10 @@ class HumanoidWalkingTask(ksim.PPOTask[HumanoidWalkingTaskConfig]):
             ksim.UprightReward(scale=0.5),
             # Normalization penalties.
             ksim.AvoidLimitsPenalty.create(physics_model, scale=-0.1),
-            # ksim.JointAccelerationPenalty(scale=-0.01),
-            # ksim.JointJerkPenalty(scale=-0.01),
-            # ksim.LinkAccelerationPenalty(scale=-0.01),
-            # ksim.LinkJerkPenalty(scale=-0.01),
+            ksim.JointAccelerationPenalty(scale=-0.01),
+            ksim.JointJerkPenalty(scale=-0.01),
+            ksim.LinkAccelerationPenalty(scale=-0.01),
+            ksim.LinkJerkPenalty(scale=-0.01),
             # Bespoke rewards.
             BentArmPenalty.create_penalty(physics_model, scale=-0.1),
             StraightLegPenalty.create_penalty(physics_model, scale=-0.1),
@@ -622,6 +622,7 @@ class HumanoidWalkingTask(ksim.PPOTask[HumanoidWalkingTaskConfig]):
             transition_ppo_variables = ksim.PPOVariables(
                 log_probs=log_probs,
                 values=value.squeeze(-1),
+                # entropy=actor_dist.entropy().sum(axis=-1),
             )
 
             next_carry = jax.tree.map(
@@ -678,6 +679,8 @@ if __name__ == "__main__":
             ctrl_dt=0.02,
             iterations=8,
             ls_iterations=8,
+            action_latency_range=(0.003, 0.01),  # Simulate 3-10ms of latency.
+            drop_action_prob=0.05,  # Drop 5% of commands.
             # Visualization parameters.
             render_track_body_id=0,
             # Checkpointing parameters.
