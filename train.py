@@ -92,10 +92,6 @@ class HumanoidWalkingTaskConfig(ksim.PPOConfig):
         value=3e-4,
         help="Learning rate for PPO.",
     )
-    max_grad_norm: float = xax.field(
-        value=2.0,
-        help="Maximum gradient norm for clipping.",
-    )
     adam_weight_decay: float = xax.field(
         value=1e-5,
         help="Weight decay for the Adam optimizer.",
@@ -360,16 +356,11 @@ class Model(eqx.Module):
 
 class HumanoidWalkingTask(ksim.PPOTask[HumanoidWalkingTaskConfig]):
     def get_optimizer(self) -> optax.GradientTransformation:
-        optimizer = optax.chain(
-            optax.clip_by_global_norm(self.config.max_grad_norm),
-            (
-                optax.adam(self.config.learning_rate)
-                if self.config.adam_weight_decay == 0.0
-                else optax.adamw(self.config.learning_rate, weight_decay=self.config.adam_weight_decay)
-            ),
+        return (
+            optax.adam(self.config.learning_rate)
+            if self.config.adam_weight_decay == 0.0
+            else optax.adamw(self.config.learning_rate, weight_decay=self.config.adam_weight_decay)
         )
-
-        return optimizer
 
     def get_mujoco_model(self) -> mujoco.MjModel:
         mjcf_path = asyncio.run(ksim.get_mujoco_model_path("kbot", name="robot"))
@@ -622,7 +613,6 @@ class HumanoidWalkingTask(ksim.PPOTask[HumanoidWalkingTaskConfig]):
             transition_ppo_variables = ksim.PPOVariables(
                 log_probs=log_probs,
                 values=value.squeeze(-1),
-                # entropy=actor_dist.entropy().sum(axis=-1),
             )
 
             next_carry = jax.tree.map(
@@ -633,7 +623,7 @@ class HumanoidWalkingTask(ksim.PPOTask[HumanoidWalkingTaskConfig]):
 
             return next_carry, transition_ppo_variables
 
-        next_model_carry, ppo_variables = jax.lax.scan(scan_fn, model_carry, trajectory)
+        next_model_carry, ppo_variables = xax.scan(scan_fn, model_carry, trajectory, jit_level=4)
 
         return ppo_variables, next_model_carry
 
