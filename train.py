@@ -71,11 +71,11 @@ class HumanoidWalkingTaskConfig(ksim.PPOConfig):
 
     # Curriculum parameters.
     num_curriculum_levels: int = xax.field(
-        value=10,
+        value=100,
         help="The number of curriculum levels to use.",
     )
     increase_threshold: float = xax.field(
-        value=3.0,
+        value=5.0,
         help="Increase the curriculum level when the mean trajectory length is above this threshold.",
     )
     decrease_threshold: float = xax.field(
@@ -83,7 +83,7 @@ class HumanoidWalkingTaskConfig(ksim.PPOConfig):
         help="Decrease the curriculum level when the mean trajectory length is below this threshold.",
     )
     min_level_steps: int = xax.field(
-        value=50,
+        value=1,
         help="The minimum number of steps to wait before changing the curriculum level.",
     )
 
@@ -455,7 +455,7 @@ class HumanoidWalkingTask(ksim.PPOTask[HumanoidWalkingTaskConfig]):
     def get_rewards(self, physics_model: ksim.PhysicsModel) -> list[ksim.Reward]:
         return [
             # Standard rewards.
-            ksim.StayAliveReward(scale=5.0),
+            ksim.StayAliveReward(scale=10.0),
             ksim.JoystickReward(
                 forward_speed=2.0,
                 backward_speed=1.0,
@@ -464,12 +464,14 @@ class HumanoidWalkingTask(ksim.PPOTask[HumanoidWalkingTaskConfig]):
                 scale=1.0,
             ),
             ksim.UprightReward(scale=0.5),
+            # Avoid movement penalties.
+            ksim.AngularVelocityPenalty(index=("x", "y"), scale=-0.005),
+            ksim.LinearVelocityPenalty(index=("z"), scale=-0.005),
             # Normalization penalties.
-            ksim.AvoidLimitsPenalty.create(physics_model, scale=-0.1),
-            ksim.JointAccelerationPenalty(scale=-0.01),
-            ksim.JointJerkPenalty(scale=-0.01),
-            ksim.LinkAccelerationPenalty(scale=-0.01),
-            ksim.LinkJerkPenalty(scale=-0.01),
+            ksim.AvoidLimitsPenalty.create(physics_model, scale=-0.01),
+            ksim.JointVelocityPenalty(scale=-0.01, scale_by_curriculum=True),
+            ksim.ActionAccelerationPenalty(scale=-0.01),
+            ksim.CtrlPenalty(scale=-0.01, scale_by_curriculum=True),
             # Bespoke rewards.
             BentArmPenalty.create_penalty(physics_model, scale=-0.1),
             StraightLegPenalty.create_penalty(physics_model, scale=-0.1),
@@ -479,7 +481,6 @@ class HumanoidWalkingTask(ksim.PPOTask[HumanoidWalkingTaskConfig]):
         return [
             ksim.BadZTermination(unhealthy_z_lower=0.6, unhealthy_z_upper=1.2),
             ksim.NotUprightTermination(max_radians=math.radians(60)),
-            ksim.HighVelocityTermination(),
             ksim.FarFromOriginTermination(max_dist=10.0),
         ]
 
