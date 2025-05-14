@@ -17,7 +17,6 @@ import mujoco_scenes.mjcf
 import optax
 import xax
 from jaxtyping import Array, PRNGKeyArray
-from kscale.web.gen.api import RobotURDFMetadataOutput
 
 # These are in the order of the neural network outputs.
 ZEROS: list[tuple[str, float]] = [
@@ -376,7 +375,7 @@ class HumanoidWalkingTask(ksim.PPOTask[HumanoidWalkingTaskConfig]):
         mjcf_path = asyncio.run(ksim.get_mujoco_model_path("kbot", name="robot"))
         return mujoco_scenes.mjcf.load_mjmodel(mjcf_path, scene="smooth")
 
-    def get_mujoco_model_metadata(self, mj_model: mujoco.MjModel) -> RobotURDFMetadataOutput:
+    def get_mujoco_model_metadata(self, mj_model: mujoco.MjModel) -> ksim.Metadata:
         metadata = asyncio.run(ksim.get_mujoco_model_metadata("kbot"))
         if metadata.joint_name_to_metadata is None:
             raise ValueError("Joint metadata is not available")
@@ -387,7 +386,7 @@ class HumanoidWalkingTask(ksim.PPOTask[HumanoidWalkingTaskConfig]):
     def get_actuators(
         self,
         physics_model: ksim.PhysicsModel,
-        metadata: RobotURDFMetadataOutput | None = None,
+        metadata: ksim.Metadata | None = None,
     ) -> ksim.Actuators:
         assert metadata is not None, "Metadata is required"
         return ksim.PositionActuators(
@@ -476,10 +475,10 @@ class HumanoidWalkingTask(ksim.PPOTask[HumanoidWalkingTaskConfig]):
             ksim.UprightReward(scale=0.5),
             # Normalization penalties.
             ksim.AvoidLimitsPenalty.create(physics_model, scale=-0.1),
-            ksim.JointAccelerationPenalty(scale=-0.01),
-            ksim.JointJerkPenalty(scale=-0.01),
-            ksim.LinkAccelerationPenalty(scale=-0.01),
-            ksim.LinkJerkPenalty(scale=-0.01),
+            # ksim.JointAccelerationPenalty(scale=-0.01),
+            # ksim.JointJerkPenalty(scale=-0.01),
+            # ksim.LinkAccelerationPenalty(scale=-0.01),
+            # ksim.LinkJerkPenalty(scale=-0.01),
             # Bespoke rewards.
             BentArmPenalty.create_penalty(physics_model, scale=-0.1),
             StraightLegPenalty.create_penalty(physics_model, scale=-0.1),
@@ -679,8 +678,6 @@ if __name__ == "__main__":
             ctrl_dt=0.02,
             iterations=8,
             ls_iterations=8,
-            action_latency_range=(0.003, 0.01),  # Simulate 3-10ms of latency.
-            drop_action_prob=0.05,  # Drop 5% of commands.
             # Visualization parameters.
             render_track_body_id=0,
             # Checkpointing parameters.
