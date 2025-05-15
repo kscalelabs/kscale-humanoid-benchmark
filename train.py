@@ -20,104 +20,29 @@ import xax
 from jaxtyping import Array, PRNGKeyArray
 
 # These are in the order of the neural network outputs.
-ZEROS: list[tuple[str, float]] = [
-    ("dof_right_shoulder_pitch_03", 0.0),
-    ("dof_right_shoulder_roll_03", math.radians(-10.0)),
-    ("dof_right_shoulder_yaw_02", 0.0),
-    ("dof_right_elbow_02", math.radians(90.0)),
-    ("dof_right_wrist_00", 0.0),
-    ("dof_left_shoulder_pitch_03", 0.0),
-    ("dof_left_shoulder_roll_03", math.radians(10.0)),
-    ("dof_left_shoulder_yaw_02", 0.0),
-    ("dof_left_elbow_02", math.radians(-90.0)),
-    ("dof_left_wrist_00", 0.0),
-    ("dof_right_hip_pitch_04", math.radians(-20.0)),
-    ("dof_right_hip_roll_03", math.radians(-0.0)),
-    ("dof_right_hip_yaw_03", 0.0),
-    ("dof_right_knee_04", math.radians(-50.0)),
-    ("dof_right_ankle_02", math.radians(30.0)),
-    ("dof_left_hip_pitch_04", math.radians(20.0)),
-    ("dof_left_hip_roll_03", math.radians(0.0)),
-    ("dof_left_hip_yaw_03", 0.0),
-    ("dof_left_knee_04", math.radians(50.0)),
-    ("dof_left_ankle_02", math.radians(-30.0)),
+# Joint name, target position, penalty weight.
+ZEROS: list[tuple[str, float, float]] = [
+    ("dof_right_shoulder_pitch_03", 0.0, 1.0),
+    ("dof_right_shoulder_roll_03", math.radians(-10.0), 1.0),
+    ("dof_right_shoulder_yaw_02", 0.0, 1.0),
+    ("dof_right_elbow_02", math.radians(90.0), 1.0),
+    ("dof_right_wrist_00", 0.0, 1.0),
+    ("dof_left_shoulder_pitch_03", 0.0, 1.0),
+    ("dof_left_shoulder_roll_03", math.radians(10.0), 1.0),
+    ("dof_left_shoulder_yaw_02", 0.0, 1.0),
+    ("dof_left_elbow_02", math.radians(-90.0), 1.0),
+    ("dof_left_wrist_00", 0.0, 1.0),
+    ("dof_right_hip_pitch_04", math.radians(-20.0), 1.0),
+    ("dof_right_hip_roll_03", math.radians(-0.0), 2.0),
+    ("dof_right_hip_yaw_03", 0.0, 2.0),
+    ("dof_right_knee_04", math.radians(-50.0), 1.0),
+    ("dof_right_ankle_02", math.radians(30.0), 1.0),
+    ("dof_left_hip_pitch_04", math.radians(20.0), 1.0),
+    ("dof_left_hip_roll_03", math.radians(0.0), 2.0),
+    ("dof_left_hip_yaw_03", 0.0, 2.0),
+    ("dof_left_knee_04", math.radians(50.0), 1.0),
+    ("dof_left_ankle_02", math.radians(-30.0), 1.0),
 ]
-
-
-@attrs.define(frozen=True, kw_only=True)
-class FeetContactObservation(ksim.FeetContactObservation):
-    """Flattened (4,) contact flags of both feet."""
-    def observe(self, state: ksim.ObservationInput, *_):
-        return super().observe(state, *_).flatten()
-
-
-@attrs.define(frozen=True, kw_only=True)
-class FeetPhaseReward(ksim.Reward):
-    """Tracks swing / stance phasing of the feet."""
-    scale: float = 1.0
-    feet_pos_obs_name: str = "feet_position_observation"
-    joystick_cmd_name: str = "joystick_command"
-    gait_freq_cmd_name: str = "gait_frequency_command"
-    max_foot_height: float = 0.12
-    ctrl_dt: float = 0.02
-    sensitivity: float = 0.01
-    foot_default_height: float = 0.0
-
-    def _gait_phase(self, phi, swing_height=jnp.array(0.08)):
-        """Interpolation logic for gait phase.
-        
-        https://arxiv.org/pdf/2201.00206
-        """
-        x = jnp.clip((phi + jnp.pi) / (2 * jnp.pi), 0, 1)
-
-        stance = xax.cubic_bezier_interpolation(0, swing_height, 2 * x)
-        swing = xax.cubic_bezier_interpolation(swing_height, 0, 2 * x - 1)
-        return jnp.where(x <= 0.5, stance, swing)
-
-    def get_reward(self, traj: ksim.Trajectory) -> Array:
-        foot_pos = traj.obs[self.feet_pos_obs_name]
-        gait_freq = traj.command[self.gait_freq_cmd_name]
-
-        phase_dt = 2 * jnp.pi * gait_freq * self.ctrl_dt
-        steps = jnp.repeat(jnp.int32(traj.timestep / self.ctrl_dt)[:, None], 2, axis=1)
-
-        phase = jnp.fmod(jnp.broadcast_to(jnp.array([0.0, jnp.pi]), steps.shape) + steps * phase_dt + jnp.pi,
-                         2 * jnp.pi) - jnp.pi
-
-        ideal_z = self._gait_phase(phase, self.max_foot_height)
-
-        foot_z = jnp.stack([foot_pos[..., 2], foot_pos[..., 5]], axis=-1)
-        error = jnp.sum((foot_z - ideal_z) ** 2, axis=-1)
-        reward = jnp.exp(-error / self.sensitivity)
-
-        reward *= (1.0 - traj.command[self.joystick_cmd_name][..., 0])  # zero when standing
-        return reward
-
-
-@attrs.define(frozen=True, kw_only=True)
-class ContactForcePenalty(ksim.Reward):
-    """Penalises vertical forces above threshold."""
-    scale: float = -1.0
-    max_contact_force: float = 350.0
-    sensor_names: tuple[str, ...]
-
-    def get_reward(self, traj: ksim.Trajectory) -> Array:
-        forces = jnp.stack([traj.obs[n] for n in self.sensor_names], axis=-1)
-        cost = jnp.clip(jnp.abs(forces[..., 2, :]) - self.max_contact_force, 0)
-        return jnp.sum(cost, axis=-1)
-
-
-@attrs.define(frozen=True, kw_only=True)
-class FeetSlipPenalty(ksim.Reward):
-    """Penalises COM motion while feet are in contact."""
-    scale: float = -1.0
-    com_vel_obs_name: str = "center_of_mass_velocity_observation"
-    feet_contact_obs_name: str = "feet_contact_observation"
-
-    def get_reward(self, traj: ksim.Trajectory) -> Array:
-        vel = jnp.linalg.norm(traj.obs[self.com_vel_obs_name][..., :2], axis=-1, keepdims=True)
-        contact = traj.obs[self.feet_contact_obs_name]
-        return jnp.sum(vel * contact, axis=-1)
 
 
 @dataclass
@@ -180,6 +105,79 @@ class HumanoidWalkingTaskConfig(ksim.PPOConfig):
 
 
 @attrs.define(frozen=True, kw_only=True)
+class FeetPhaseReward(ksim.Reward):
+    """Tracks swing / stance phasing of the feet."""
+
+    scale: float = 1.0
+    feet_pos_obs_name: str = "feet_position_observation"
+    joystick_cmd_name: str = "joystick_command"
+    gait_freq_cmd_name: str = "gait_frequency_command"
+    max_foot_height: float = 0.12
+    ctrl_dt: float = 0.02
+    sensitivity: float = 0.01
+    foot_default_height: float = 0.0
+
+    def _gait_phase(self, phi: Array, swing_height: Array = jnp.array(0.08)) -> Array:
+        """Interpolation logic for gait phase.
+
+        https://arxiv.org/pdf/2201.00206
+        """
+        x = jnp.clip((phi + jnp.pi) / (2 * jnp.pi), 0, 1)
+        stance = xax.cubic_bezier_interpolation(jnp.array(0.0), swing_height, 2 * x)
+        swing = xax.cubic_bezier_interpolation(swing_height, jnp.array(0.0), 2 * x - 1)
+        return jnp.where(x <= 0.5, stance, swing)
+
+    def get_reward(self, traj: ksim.Trajectory) -> Array:
+        foot_pos = traj.obs[self.feet_pos_obs_name]
+        gait_freq = traj.command[self.gait_freq_cmd_name]
+
+        phase_dt = 2 * jnp.pi * gait_freq * self.ctrl_dt
+        steps = jnp.repeat(jnp.int32(traj.timestep / self.ctrl_dt)[:, None], 2, axis=1)
+
+        phase = (
+            jnp.fmod(jnp.broadcast_to(jnp.array([0.0, jnp.pi]), steps.shape) + steps * phase_dt + jnp.pi, 2 * jnp.pi)
+            - jnp.pi
+        )
+
+        ideal_z = self._gait_phase(phase, jnp.array(self.max_foot_height))
+
+        foot_z = jnp.stack([foot_pos[..., 2], foot_pos[..., 5]], axis=-1)
+        error = jnp.sum((foot_z - ideal_z) ** 2, axis=-1)
+        reward = jnp.exp(-error / self.sensitivity)
+
+        reward *= 1.0 - traj.command[self.joystick_cmd_name][..., 0]  # zero when standing
+        return reward
+
+
+@attrs.define(frozen=True, kw_only=True)
+class ContactForcePenalty(ksim.Reward):
+    """Penalises vertical forces above threshold."""
+
+    scale: float = -1.0
+    max_contact_force: float = 350.0
+    sensor_names: tuple[str, ...]
+
+    def get_reward(self, traj: ksim.Trajectory) -> Array:
+        forces = jnp.stack([traj.obs[n] for n in self.sensor_names], axis=-1)
+        cost = jnp.clip(jnp.abs(forces[..., 2, :]) - self.max_contact_force, 0)
+        return jnp.sum(cost, axis=-1)
+
+
+@attrs.define(frozen=True, kw_only=True)
+class FeetSlipPenalty(ksim.Reward):
+    """Penalises COM motion while feet are in contact."""
+
+    scale: float = -1.0
+    com_vel_obs_name: str = "center_of_mass_velocity_observation"
+    feet_contact_obs_name: str = "feet_contact_observation"
+
+    def get_reward(self, traj: ksim.Trajectory) -> Array:
+        vel = jnp.linalg.norm(traj.obs[self.com_vel_obs_name][..., :2], axis=-1, keepdims=True)
+        contact = traj.obs[self.feet_contact_obs_name]
+        return jnp.sum(vel * contact, axis=-1)
+
+
+@attrs.define(frozen=True, kw_only=True)
 class JointPositionPenalty(ksim.JointDeviationPenalty):
     @classmethod
     def create_from_names(
@@ -189,13 +187,16 @@ class JointPositionPenalty(ksim.JointDeviationPenalty):
         scale: float = -1.0,
         scale_by_curriculum: bool = False,
     ) -> Self:
-        zeros = {k: v for k, v in ZEROS}
+        zeros = {k: v for k, v, _ in ZEROS}
+        weights = {k: v for k, _, v in ZEROS}
         joint_targets = [zeros[name] for name in names]
+        joint_weights = [weights[name] for name in names]
 
         return cls.create(
             physics_model=physics_model,
             joint_names=tuple(names),
             joint_targets=tuple(joint_targets),
+            joint_weights=tuple(joint_weights),
             scale=scale,
             scale_by_curriculum=scale_by_curriculum,
         )
@@ -249,6 +250,87 @@ class StraightLegPenalty(JointPositionPenalty):
             scale=scale,
             scale_by_curriculum=scale_by_curriculum,
         )
+
+
+@attrs.define(frozen=True)
+class GaitFrequencyCommand(ksim.Command):
+    """Command that holds a (1,) gait-frequency value."""
+
+    gait_freq_lower: float = 1.2
+    gait_freq_upper: float = 1.5
+
+    def initial_command(self, physics_data: ksim.PhysicsData, curriculum_level: Array, rng: PRNGKeyArray) -> Array:
+        return jax.random.uniform(rng, (1,), minval=self.gait_freq_lower, maxval=self.gait_freq_upper)
+
+    def __call__(
+        self, prev_command: Array, physics_data: ksim.PhysicsData, curriculum_level: Array, rng: PRNGKeyArray
+    ) -> Array:
+        return prev_command
+
+
+@attrs.define(frozen=True, kw_only=True)
+class TimestepPhaseObservation(ksim.TimestepObservation):
+    """Observation of the phase of the timestep (matches gait phase calculation in FeetPhaseReward)."""
+
+    ctrl_dt: float = attrs.field(default=0.02)
+
+    def observe(self, state: ksim.ObservationInput, curriculum_level: Array, rng: PRNGKeyArray) -> Array:
+        gait_freq = state.commands["gait_frequency_command"]
+        timestep = super().observe(state, curriculum_level, rng)
+        steps = timestep / self.ctrl_dt
+        phase_dt = 2 * jnp.pi * gait_freq * self.ctrl_dt
+        start_phase = jnp.array([0, jnp.pi])
+        phase = start_phase + steps * phase_dt
+        phase = jnp.fmod(phase + jnp.pi, 2 * jnp.pi) - jnp.pi
+
+        # Stand still case
+        joystick_cmd = state.commands["joystick_command"]
+        # Check if the "stand still" command (index 0 of one-hot encoded vector) is active.
+        is_stand_still_command = joystick_cmd[..., 0] == 1.0
+        phase = jnp.where(
+            is_stand_still_command,
+            jnp.array([jnp.pi / 2, jnp.pi]),  # stand still position
+            phase,
+        )
+
+        return jnp.array([jnp.cos(phase), jnp.sin(phase)]).flatten()
+
+
+@attrs.define(frozen=True, kw_only=True)
+class FeetContactObservation(ksim.FeetContactObservation):
+    """Flattened (4,) contact flags of both feet."""
+
+    def observe(self, state: ksim.ObservationInput, curriculum_level: Array, rng: PRNGKeyArray) -> Array:
+        return super().observe(state, curriculum_level, rng).flatten()
+
+
+@attrs.define(frozen=True)
+class FeetPositionObservation(ksim.Observation):
+    foot_left_idx: int
+    foot_right_idx: int
+    floor_threshold: float = 0.0
+
+    @classmethod
+    def create(
+        cls,
+        *,
+        physics_model: ksim.PhysicsModel,
+        foot_left_site_name: str,
+        foot_right_site_name: str,
+        floor_threshold: float = 0.0,
+    ) -> Self:
+        fl = ksim.get_site_data_idx_from_name(physics_model, foot_left_site_name)
+        fr = ksim.get_site_data_idx_from_name(physics_model, foot_right_site_name)
+        return cls(foot_left_idx=fl, foot_right_idx=fr, floor_threshold=floor_threshold)
+
+    def observe(self, state: ksim.ObservationInput, curriculum_level: Array, rng: PRNGKeyArray) -> Array:
+        fl = ksim.get_site_pose(state.physics_state.data, self.foot_left_idx)[0] + jnp.array(
+            [0.0, 0.0, self.floor_threshold]
+        )
+        fr = ksim.get_site_pose(state.physics_state.data, self.foot_right_idx)[0] + jnp.array(
+            [0.0, 0.0, self.floor_threshold]
+        )
+        return jnp.concatenate([fl, fr], axis=-1)
 
 
 class Actor(eqx.Module):
@@ -331,7 +413,7 @@ class Actor(eqx.Module):
         std_nm = jnp.clip((jax.nn.softplus(std_nm) + self.min_std) * self.var_scale, max=self.max_std)
 
         # Apply bias to the means.
-        mean_nm = mean_nm + jnp.array([v for _, v in ZEROS])[:, None]
+        mean_nm = mean_nm + jnp.array([v for _, v, _ in ZEROS])[:, None]
 
         dist_n = ksim.MixtureOfGaussians(means_nm=mean_nm, stds_nm=std_nm, logits_nm=logits_nm)
 
@@ -474,7 +556,9 @@ class HumanoidWalkingTask(ksim.PPOTask[HumanoidWalkingTaskConfig]):
             ksim.AllBodiesMassMultiplicationRandomizer(scale_lower=0.95, scale_upper=1.05),
             ksim.JointDampingRandomizer(),
             ksim.JointZeroPositionRandomizer(scale_lower=math.radians(-2), scale_upper=math.radians(2)),
-            ksim.FloorFrictionRandomizer.from_geom_name(model=physics_model, floor_geom_name="floor", scale_lower=0.1, scale_upper=2.0),
+            ksim.FloorFrictionRandomizer.from_geom_name(
+                model=physics_model, floor_geom_name="floor", scale_lower=0.1, scale_upper=2.0
+            ),
         ]
 
     def get_events(self, physics_model: ksim.PhysicsModel) -> list[ksim.Event]:
@@ -493,13 +577,14 @@ class HumanoidWalkingTask(ksim.PPOTask[HumanoidWalkingTaskConfig]):
 
     def get_resets(self, physics_model: ksim.PhysicsModel) -> list[ksim.Reset]:
         return [
-            ksim.RandomJointPositionReset.create(physics_model, {k: v for k, v in ZEROS}, scale=0.1),
+            ksim.RandomJointPositionReset.create(physics_model, {k: v for k, v, _ in ZEROS}, scale=0.1),
             ksim.RandomJointVelocityReset(),
         ]
 
     def get_observations(self, physics_model: ksim.PhysicsModel) -> list[ksim.Observation]:
         return [
-            ksim.TimestepObservation(),
+            TimestepPhaseObservation(),
+            # ksim.TimestepObservation(),
             ksim.JointPositionObservation(noise=math.radians(2)),
             ksim.JointVelocityObservation(noise=math.radians(10)),
             ksim.ActuatorForceObservation(),
@@ -534,15 +619,15 @@ class HumanoidWalkingTask(ksim.PPOTask[HumanoidWalkingTaskConfig]):
             ksim.SensorObservation.create(physics_model=physics_model, sensor_name="base_site_angvel", noise=0.0),
             FeetContactObservation.create(
                 physics_model=physics_model,
-                foot_left_geom_names = (
+                foot_left_geom_names=(
                     "KB_D_501L_L_LEG_FOOT_collision_capsule_0",
                     "KB_D_501L_L_LEG_FOOT_collision_capsule_1",
                 ),
-                foot_right_geom_names = (
+                foot_right_geom_names=(
                     "KB_D_501R_R_LEG_FOOT_collision_capsule_0",
                     "KB_D_501R_R_LEG_FOOT_collision_capsule_1",
                 ),
-                floor_geom_names = "floor",
+                floor_geom_names="floor",
             ),
             FeetPositionObservation.create(
                 physics_model=physics_model,
@@ -570,7 +655,7 @@ class HumanoidWalkingTask(ksim.PPOTask[HumanoidWalkingTaskConfig]):
                 backward_speed=1.0,
                 strafe_speed=1.0,
                 rotation_speed=math.radians(30),
-                scale=2.0,
+                scale=1.5,
             ),
             ksim.UprightReward(scale=0.5),
             # Normalisation penalties.
@@ -580,10 +665,10 @@ class HumanoidWalkingTask(ksim.PPOTask[HumanoidWalkingTaskConfig]):
             ksim.LinkAccelerationPenalty(scale=-0.01),
             ksim.LinkJerkPenalty(scale=-0.01),
             ksim.AngularVelocityPenalty(index=("x", "y"), scale=-0.005),
-            ksim.LinearVelocityPenalty(index=("z",),    scale=-0.005),
+            ksim.LinearVelocityPenalty(index=("z",), scale=-0.005),
             # Bespoke rewards.
             BentArmPenalty.create_penalty(physics_model, scale=-0.1),
-            StraightLegPenalty.create_penalty(physics_model, scale=-0.1),
+            StraightLegPenalty.create_penalty(physics_model, scale=-0.2),
             FeetPhaseReward(scale=1.0, foot_default_height=0.04, max_foot_height=0.12),
             FeetSlipPenalty(scale=-0.25),
             ContactForcePenalty(
@@ -610,23 +695,28 @@ class HumanoidWalkingTask(ksim.PPOTask[HumanoidWalkingTaskConfig]):
     def get_model(self, key: PRNGKeyArray) -> Model:
         num_joints = len(ZEROS)
 
-        num_actor_obs  = 2 + num_joints * 2 + 3
+        # timestep phase + joint pos / vel + proj_grav
+        num_actor_obs = 4 + num_joints * 2 + 3
 
         if self.config.use_acc_gyro:
             num_actor_obs += 6
 
-        num_commands = 7 + 1 # joystick OHE + gait frequency
+        num_commands = 7 + 1  # joystick OHE + gait frequency
         num_actor_inputs = num_actor_obs + num_commands
 
         num_critic_inputs = (
-            num_actor_inputs 
-            + 4 # feet contact
-            + 6 # feet position
-            + 3 + 4 # base pos / quat
-            + 138 + 230 # COM inertia / velocity
-            + 3 + 3 # base linear / angular vel
-            + num_joints # actuator force
-            + 3 + 3 # imu_acc/gyro (privileged copies)
+            num_actor_inputs
+            + 4  # feet contact
+            + 6  # feet position
+            + 3
+            + 4  # base pos / quat
+            + 138
+            + 230  # COM inertia / velocity
+            + 3
+            + 3  # base linear / angular vel
+            + num_joints  # actuator force
+            + 3
+            + 3  # imu_acc/gyro (privileged copies)
         )
 
         if self.config.use_acc_gyro:
@@ -652,7 +742,8 @@ class HumanoidWalkingTask(ksim.PPOTask[HumanoidWalkingTaskConfig]):
         commands: xax.FrozenDict[str, Array],
         carry: Array,
     ) -> tuple[distrax.Distribution, Array]:
-        time_1 = observations["timestep_observation"]
+        # time_1 = observations["timestep_observation"]
+        timestep_phase_4 = observations["timestep_phase_observation"]
         joint_pos_n = observations["joint_position_observation"]
         joint_vel_n = observations["joint_velocity_observation"]
         proj_grav_3 = observations["projected_gravity_observation"]
@@ -662,8 +753,9 @@ class HumanoidWalkingTask(ksim.PPOTask[HumanoidWalkingTaskConfig]):
         gait_freq_cmd_1 = commands["gait_frequency_command"]
 
         obs = [
-            jnp.sin(time_1),
-            jnp.cos(time_1),
+            # jnp.sin(time_1),
+            # jnp.cos(time_1),
+            timestep_phase_4,  # 4
             joint_pos_n,  # NUM_JOINTS
             joint_vel_n,  # NUM_JOINTS
             proj_grav_3,  # 3
@@ -688,7 +780,8 @@ class HumanoidWalkingTask(ksim.PPOTask[HumanoidWalkingTaskConfig]):
         commands: xax.FrozenDict[str, Array],
         carry: Array,
     ) -> tuple[Array, Array]:
-        time_1 = observations["timestep_observation"]
+        # time_1 = observations["timestep_observation"]
+        timestep_phase_4 = observations["timestep_phase_observation"]
         joint_pos_n = observations["joint_position_observation"]
         joint_vel_n = observations["joint_velocity_observation"]
         proj_grav_3 = observations["projected_gravity_observation"]
@@ -710,8 +803,9 @@ class HumanoidWalkingTask(ksim.PPOTask[HumanoidWalkingTaskConfig]):
 
         obs_n = jnp.concatenate(
             [
-                jnp.sin(time_1),
-                jnp.cos(time_1),
+                # jnp.sin(time_1),
+                # jnp.cos(time_1),
+                timestep_phase_4,  # 4
                 joint_pos_n,
                 joint_vel_n / 10.0,
                 com_inertia_n,
@@ -816,49 +910,6 @@ class HumanoidWalkingTask(ksim.PPOTask[HumanoidWalkingTaskConfig]):
         )
         action_j = action_dist_j.mode() if argmax else action_dist_j.sample(seed=rng)
         return ksim.Action(action=action_j, carry=(actor_carry, critic_carry_in))
-
-
-@attrs.define(frozen=True)
-class GaitFrequencyCommand(ksim.Command):
-    """Command that holds a (1,) gait-frequency value."""
-    gait_freq_lower: float = 1.2
-    gait_freq_upper: float = 1.5
-
-    def initial_command(self, *_):
-        _, _, rng = _
-        return jax.random.uniform(rng, (1,), minval=self.gait_freq_lower, maxval=self.gait_freq_upper)
-
-    def __call__(self, prev_command, *_):
-        return prev_command
-
-
-@attrs.define(frozen=True)
-class FeetPositionObservation(ksim.Observation):
-    foot_left_idx: int
-    foot_right_idx: int
-    floor_threshold: float = 0.0
-
-    @classmethod
-    def create(
-        cls,
-        *,
-        physics_model: ksim.PhysicsModel,
-        foot_left_site_name: str,
-        foot_right_site_name: str,
-        floor_threshold: float = 0.0,
-    ) -> Self:
-        fl = ksim.get_site_data_idx_from_name(physics_model, foot_left_site_name)
-        fr = ksim.get_site_data_idx_from_name(physics_model, foot_right_site_name)
-        return cls(foot_left_idx=fl, foot_right_idx=fr, floor_threshold=floor_threshold)
-
-    def observe(self, state: ksim.ObservationInput, *_):
-        fl = ksim.get_site_pose(state.physics_state.data, self.foot_left_idx)[0] + jnp.array(
-            [0.0, 0.0, self.floor_threshold]
-        )
-        fr = ksim.get_site_pose(state.physics_state.data, self.foot_right_idx)[0] + jnp.array(
-            [0.0, 0.0, self.floor_threshold]
-        )
-        return jnp.concatenate([fl, fr], axis=-1)
 
 
 if __name__ == "__main__":
