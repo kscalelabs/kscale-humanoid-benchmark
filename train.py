@@ -69,6 +69,10 @@ class HumanoidWalkingTaskConfig(ksim.PPOConfig):
         value=True,
         help="Whether to use the IMU acceleration and gyroscope observations.",
     )
+    use_domain_randomization: bool = xax.field(
+        value=True,
+        help="Whether to use domain randomization.",
+    )
 
     # Curriculum parameters.
     num_curriculum_levels: int = xax.field(
@@ -399,8 +403,8 @@ class HumanoidWalkingTask(ksim.PPOTask[HumanoidWalkingTaskConfig]):
     def get_events(self, physics_model: ksim.PhysicsModel) -> list[ksim.Event]:
         return [
             ksim.PushEvent(
-                x_force=0.5,
-                y_force=0.5,
+                x_force=1.0,
+                y_force=1.0,
                 z_force=0.3,
                 force_range=(0.5, 1.0),
                 x_angular_force=0.0,
@@ -450,21 +454,14 @@ class HumanoidWalkingTask(ksim.PPOTask[HumanoidWalkingTaskConfig]):
         ]
 
     def get_commands(self, physics_model: ksim.PhysicsModel) -> list[ksim.Command]:
-        return [
-            ksim.JoystickCommand(),
-        ]
+        return []
 
     def get_rewards(self, physics_model: ksim.PhysicsModel) -> list[ksim.Reward]:
         return [
             # Standard rewards.
-            ksim.StayAliveReward(scale=10.0),
-            ksim.JoystickReward(
-                forward_speed=2.0,
-                backward_speed=1.0,
-                strafe_speed=1.0,
-                rotation_speed=math.radians(30),
-                scale=1.0,
-            ),
+            ksim.NaiveForwardReward(clip_max=1.0, in_robot_frame=False, scale=3.0),
+            ksim.NaiveForwardOrientationReward(scale=1.0),
+            ksim.StayAliveReward(scale=1.0),
             ksim.UprightReward(scale=0.5),
             # Avoid movement penalties.
             ksim.AngularVelocityPenalty(index=("x", "y"), scale=-0.005),
@@ -472,11 +469,11 @@ class HumanoidWalkingTask(ksim.PPOTask[HumanoidWalkingTaskConfig]):
             # Normalization penalties.
             ksim.AvoidLimitsPenalty.create(physics_model, scale=-0.01),
             ksim.JointVelocityPenalty(scale=-0.01, scale_by_curriculum=True),
-            ksim.JointAccelerationPenalty(scale=-0.01),
-            ksim.JointJerkPenalty(scale=-0.01),
-            ksim.LinkAccelerationPenalty(scale=-0.01),
-            ksim.LinkJerkPenalty(scale=-0.01),
-            ksim.ActionAccelerationPenalty(scale=-0.01),
+            ksim.JointAccelerationPenalty(scale=-0.01, scale_by_curriculum=True),
+            ksim.JointJerkPenalty(scale=-0.01, scale_by_curriculum=True),
+            ksim.LinkAccelerationPenalty(scale=-0.01, scale_by_curriculum=True),
+            ksim.LinkJerkPenalty(scale=-0.01, scale_by_curriculum=True),
+            ksim.ActionAccelerationPenalty(scale=-0.01, scale_by_curriculum=True),
             ksim.CtrlPenalty(scale=-0.01, scale_by_curriculum=True),
             # Bespoke rewards.
             BentArmPenalty.create_penalty(physics_model, scale=-0.1),
@@ -491,19 +488,16 @@ class HumanoidWalkingTask(ksim.PPOTask[HumanoidWalkingTaskConfig]):
         ]
 
     def get_curriculum(self, physics_model: ksim.PhysicsModel) -> ksim.Curriculum:
-        return ksim.EpisodeLengthCurriculum(
-            num_levels=self.config.num_curriculum_levels,
-            increase_threshold=self.config.increase_threshold,
-            decrease_threshold=self.config.decrease_threshold,
-            min_level_steps=self.config.min_level_steps,
+        return ksim.ConstantCurriculum(
+            level=1.0 if self.config.use_domain_randomization else 0.0,
         )
 
     def get_model(self, key: PRNGKeyArray) -> Model:
         return Model(
             key,
-            num_actor_inputs=58 if self.config.use_acc_gyro else 52,
+            num_actor_inputs=51 if self.config.use_acc_gyro else 45,
             num_actor_outputs=len(ZEROS),
-            num_critic_inputs=453,
+            num_critic_inputs=446,
             min_std=0.01,
             max_std=1.0,
             var_scale=self.config.var_scale,
@@ -525,7 +519,6 @@ class HumanoidWalkingTask(ksim.PPOTask[HumanoidWalkingTaskConfig]):
         proj_grav_3 = observations["projected_gravity_observation"]
         imu_acc_3 = observations["sensor_observation_imu_acc"]
         imu_gyro_3 = observations["sensor_observation_imu_gyro"]
-        joystick_cmd_ohe_7 = commands["joystick_command"]
 
         obs = [
             jnp.sin(time_1),
@@ -533,7 +526,6 @@ class HumanoidWalkingTask(ksim.PPOTask[HumanoidWalkingTaskConfig]):
             joint_pos_n,  # NUM_JOINTS
             joint_vel_n,  # NUM_JOINTS
             proj_grav_3,  # 3
-            joystick_cmd_ohe_7,  # 7
         ]
         if self.config.use_acc_gyro:
             obs += [
@@ -564,7 +556,6 @@ class HumanoidWalkingTask(ksim.PPOTask[HumanoidWalkingTaskConfig]):
         act_frc_obs_n = observations["actuator_force_observation"]
         base_pos_3 = observations["base_position_observation"]
         base_quat_4 = observations["base_orientation_observation"]
-        joystick_cmd_ohe_7 = commands["joystick_command"]
 
         obs_n = jnp.concatenate(
             [
@@ -580,7 +571,6 @@ class HumanoidWalkingTask(ksim.PPOTask[HumanoidWalkingTaskConfig]):
                 act_frc_obs_n / 100.0,  # NUM_JOINTS
                 base_pos_3,  # 3
                 base_quat_4,  # 4
-                joystick_cmd_ohe_7,  # 7
             ],
             axis=-1,
         )
