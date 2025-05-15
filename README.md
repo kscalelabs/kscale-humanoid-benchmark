@@ -3,7 +3,7 @@
 <p>Train and deploy your own humanoid robot controller in 700 lines of Python</p>
 <h3>
   <a href="https://url.kscale.dev/leaderboard">Leaderboard</a> ·
-  <a href="https://url.kscale.dev/docs">Documentation</a> ·
+  <a href="https://docs.kscale.dev/docs/quick-start#/">Documentation</a> ·
   <a href="https://github.com/kscalelabs/ksim/tree/master/examples">K-Sim Examples</a>
 </h3>
 
