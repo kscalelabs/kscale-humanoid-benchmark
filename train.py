@@ -335,8 +335,9 @@ class Model(eqx.Module):
         num_mixtures: int,
         depth: int,
     ) -> None:
+        actor_key, critic_key = jax.random.split(key)
         self.actor = Actor(
-            key,
+            actor_key,
             num_inputs=num_actor_inputs,
             num_outputs=num_actor_outputs,
             min_std=min_std,
@@ -347,7 +348,7 @@ class Model(eqx.Module):
             depth=depth,
         )
         self.critic = Critic(
-            key,
+            critic_key,
             hidden_size=hidden_size,
             depth=depth,
             num_inputs=num_critic_inputs,
@@ -592,7 +593,7 @@ class HumanoidWalkingTask(ksim.PPOTask[HumanoidWalkingTaskConfig]):
             actor_critic_carry: tuple[Array, Array],
             transition: ksim.Trajectory,
         ) -> tuple[tuple[Array, Array], ksim.PPOVariables]:
-            actor_carry, critic_carry = model_carry
+            actor_carry, critic_carry = actor_critic_carry
             actor_dist, next_actor_carry = self.run_actor(
                 model=model.actor,
                 observations=transition.obs,
@@ -665,6 +666,7 @@ if __name__ == "__main__":
             num_passes=4,
             epochs_per_log_step=1,
             rollout_length_seconds=8.0,
+            global_grad_clip=2.0,
             # Simulation parameters.
             dt=0.002,
             ctrl_dt=0.02,
