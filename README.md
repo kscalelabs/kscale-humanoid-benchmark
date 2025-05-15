@@ -30,7 +30,7 @@ brew install git-lfs  # MacOS
 4. Clone the new repository you create from this template:
 
 ```bash
-git clone git@github.com:<YOUR USERNAME>/kscale-humanoid-benchmark.git
+git clone git@github.com:<YOUR USERNAME>/ksim-gym.git
 cd kscale-humanoid-benchmark
 ```
 
