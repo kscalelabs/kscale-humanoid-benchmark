@@ -2,6 +2,7 @@
 
 # Training dependencies
 ksim
+mujoco-scenes
 
 # Inference dependencies
 kinfer[jax]
