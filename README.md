@@ -1,5 +1,5 @@
 <div align="center">
-<h1>K-Scale Humanoid Benchmark</h1>
+<h1>K-Sim Gym</h1>
 <p>Train and deploy your own humanoid robot controller in 700 lines of Python</p>
 <h3>
   <a href="https://url.kscale.dev/leaderboard">Leaderboard</a> ·
