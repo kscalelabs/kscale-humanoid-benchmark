@@ -1,7 +1,8 @@
 # requirements.txt
 
 # Training dependencies
-ksim
+ksim==0.1.0
+xax==0.3.0
 mujoco-scenes
 
 # Inference dependencies
