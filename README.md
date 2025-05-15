@@ -6,6 +6,9 @@
   <a href="https://url.kscale.dev/docs">Documentation</a> ·
   <a href="https://github.com/kscalelabs/ksim/tree/master/examples">K-Sim Examples</a>
 </h3>
+
+https://github.com/user-attachments/assets/3d44aa23-5ad7-41a3-b467-22165542b8c4
+
 </div>
 
 ## Getting Started
@@ -14,12 +17,12 @@ You can use this repository as a GitHub template or as a Google Colab.
 
 ### Google Colab
 
-You can quickly try out the humanoid benchmark by running the [training notebook](https://colab.research.google.com/github/kscalelabs/kscale-humanoid-benchmark/blob/master/train.ipynb) in Google Colab.
+You can quickly try out the humanoid benchmark by running the [training notebook](https://colab.research.google.com/github/kscalelabs/ksim-gym/blob/master/train.ipynb) in Google Colab.
 
 ### On your own GPU
 
 1. Read through the [current leaderboard](https://url.kscale.dev/leaderboard) submissions and through the [ksim examples](https://github.com/kscalelabs/ksim/tree/master/examples)
-2. Create a new repository from this template by clicking [here](https://github.com/new?template_name=kscale-humanoid-benchmark&template_owner=kscalelabs)
+2. Create a new repository from this template by clicking [here](https://github.com/new?template_name=ksim-gym&template_owner=kscalelabs)
 3. Make sure you have installed `git-lfs`:
 
 ```bash
@@ -30,8 +33,8 @@ brew install git-lfs  # MacOS
 4. Clone the new repository you create from this template:
 
 ```bash
-git clone git@github.com:<YOUR USERNAME>/kscale-humanoid-benchmark.git
-cd kscale-humanoid-benchmark
+git clone git@github.com:<YOUR USERNAME>/ksim-gym.git
+cd ksim-gym
 ```
 
 5. Create a new Python environment (we require Python 3.11 or later)
