@@ -6,6 +6,9 @@
   <a href="https://url.kscale.dev/docs">Documentation</a> ·
   <a href="https://github.com/kscalelabs/ksim/tree/master/examples">K-Sim Examples</a>
 </h3>
+
+https://github.com/user-attachments/assets/3d44aa23-5ad7-41a3-b467-22165542b8c4
+
 </div>
 
 ## Getting Started
