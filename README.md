@@ -4,7 +4,8 @@
 <h3>
   <a href="https://url.kscale.dev/leaderboard">Leaderboard</a> ·
   <a href="https://docs.kscale.dev/docs/quick-start#/">Documentation</a> ·
-  <a href="https://github.com/kscalelabs/ksim/tree/master/examples">K-Sim Examples</a>
+  <a href="https://github.com/kscalelabs/ksim/tree/master/examples">K-Sim Examples</a> ·
+  <a href="https://github.com/kscalelabs/kbot-joystick">Joystick Example</a>
 </h3>
 
 https://github.com/user-attachments/assets/3d44aa23-5ad7-41a3-b467-22165542b8c4
@@ -80,13 +81,13 @@ To visualize running your model without using `kos-sim`, use the command:
 python -m train run_mode=view
 ```
 
-This repository contains a pre-trained checkpoint of a model which has been learned to be robust to pushes, which is useful for both jump-starting model training and understanding the codebase. To initialize training from this checkpoint, use the command:
+To see an example of a locomotion task with more complex reward tuning, see our [kbot-joystick](https://github.com/kscalelabs/kbot-joystick) task which was generated from this template. It also contains a pretrained checkpoint that you can initialize training from by running
 
 ```bash
 python -m train load_from_ckpt_path=assets/ckpt.bin
 ```
 
-You can visualize the pre-trained model by combining these two commands:
+You can also visualize the pre-trained model by combining these two commands:
 
 ```bash
 python -m train load_from_ckpt_path=assets/ckpt.bin run_mode=view
