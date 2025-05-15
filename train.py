@@ -459,7 +459,7 @@ class HumanoidWalkingTask(ksim.PPOTask[HumanoidWalkingTaskConfig]):
     def get_rewards(self, physics_model: ksim.PhysicsModel) -> list[ksim.Reward]:
         return [
             # Standard rewards.
-            ksim.NaiveForwardReward(clip_max=1.0, in_robot_frame=False, scale=3.0),
+            ksim.NaiveForwardReward(clip_max=2.0, in_robot_frame=False, scale=3.0),
             ksim.NaiveForwardOrientationReward(scale=1.0),
             ksim.StayAliveReward(scale=1.0),
             ksim.UprightReward(scale=0.5),
@@ -483,12 +483,14 @@ class HumanoidWalkingTask(ksim.PPOTask[HumanoidWalkingTaskConfig]):
     def get_terminations(self, physics_model: ksim.PhysicsModel) -> list[ksim.Termination]:
         return [
             ksim.BadZTermination(unhealthy_z_lower=0.6, unhealthy_z_upper=1.2),
-            ksim.NotUprightTermination(max_radians=math.radians(60)),
             ksim.FarFromOriginTermination(max_dist=10.0),
         ]
 
     def get_curriculum(self, physics_model: ksim.PhysicsModel) -> ksim.Curriculum:
         return ksim.ConstantCurriculum(
+            # We toggle domain randomization by setting the curriculum level.
+            # Since the domain randomization functions all use this level,
+            # this effectively toggles them on and off.
             level=1.0 if self.config.use_domain_randomization else 0.0,
         )
 
@@ -498,7 +500,7 @@ class HumanoidWalkingTask(ksim.PPOTask[HumanoidWalkingTaskConfig]):
             num_actor_inputs=51 if self.config.use_acc_gyro else 45,
             num_actor_outputs=len(ZEROS),
             num_critic_inputs=446,
-            min_std=0.01,
+            min_std=0.001,
             max_std=1.0,
             var_scale=self.config.var_scale,
             hidden_size=self.config.hidden_size,
@@ -676,7 +678,7 @@ if __name__ == "__main__":
             ctrl_dt=0.02,
             iterations=8,
             ls_iterations=8,
-            action_latency_range=(0.003, 0.01),  # Simulate 3-10ms of latency.
+            action_latency_range=(0.003, 0.005),  # Simulate 3-5ms of latency.
             drop_action_prob=0.05,  # Drop 5% of commands.
             # Visualization parameters.
             render_track_body_id=0,

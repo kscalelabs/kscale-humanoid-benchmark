@@ -3,7 +3,7 @@
 <p>Train and deploy your own humanoid robot controller in 700 lines of Python</p>
 <h3>
   <a href="https://url.kscale.dev/leaderboard">Leaderboard</a> ·
-  <a href="https://url.kscale.dev/docs">Documentation</a> ·
+  <a href="https://docs.kscale.dev/docs/quick-start#/">Documentation</a> ·
   <a href="https://github.com/kscalelabs/ksim/tree/master/examples">K-Sim Examples</a>
 </h3>
 
@@ -23,51 +23,44 @@ You can quickly try out the humanoid benchmark by running the [training notebook
 
 1. Read through the [current leaderboard](https://url.kscale.dev/leaderboard) submissions and through the [ksim examples](https://github.com/kscalelabs/ksim/tree/master/examples)
 2. Create a new repository from this template by clicking [here](https://github.com/new?template_name=ksim-gym&template_owner=kscalelabs)
-3. Make sure you have installed `git-lfs`:
-
-```bash
-sudo apt install git-lfs  # Ubuntu
-brew install git-lfs  # MacOS
-```
-
-4. Clone the new repository you create from this template:
+3. Clone the new repository you create from this template:
 
 ```bash
 git clone git@github.com:<YOUR USERNAME>/ksim-gym.git
 cd ksim-gym
 ```
 
-5. Create a new Python environment (we require Python 3.11 or later)
-6. Install the package with its dependencies:
+4. Create a new Python environment (we require Python 3.11 or later)
+5. Install the package with its dependencies:
 
 ```bash
 pip install -r requirements.txt
 pip install 'jax[cuda12]'  # If using GPU machine, install Jax CUDA libraries
 ```
 
-7. Train a policy:
+6. Train a policy:
 
 ```bash
 python -m train
 ```
 
-8. Convert the checkpoint to a `kinfer` model:
+7. Convert the checkpoint to a `kinfer` model:
 
 ```bash
 python -m convert /path/to/ckpt.bin /path/to/model.kinfer
 ```
 
-9. Visualize the converted model:
+8. Visualize the converted model:
 
 ```bash
-kinfer-sim assets/model.kinfer kbot --save-video assets/video.mp4
+kinfer-sim assets/model.kinfer kbot --start-height 1.2 --save-video video.mp4
 ```
 
-10. Commit the K-Infer model and the recorded video to this repository
-11. Push your code and model to your repository, and make sure the repository is public
-12. Write a message with a link to your repository on our [Discord](https://url.kscale.dev/discord) in the "【🧠】submissions" channel
-13. Wait for one of us to run it on the real robot - this should take about a day, but if we are dragging our feet, please message us on Discord
-14. Voila! Your name will now appear on our [leaderboard](https://url.kscale.dev/leaderboard)
+9. Commit the K-Infer model and the recorded video to this repository
+10. Push your code and model to your repository, and make sure the repository is public (you may need to use [git lfs](https://git-lfs.com))
+11. Write a message with a link to your repository on our [Discord](https://url.kscale.dev/discord) in the "【🧠】submissions" channel
+12. Wait for one of us to run it on the real robot - this should take about a day, but if we are dragging our feet, please message us on Discord
+13. Voila! Your name will now appear on our [leaderboard](https://url.kscale.dev/leaderboard)
 
 ## Troubleshooting
 
