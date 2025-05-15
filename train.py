@@ -69,10 +69,6 @@ class HumanoidWalkingTaskConfig(ksim.PPOConfig):
         value=True,
         help="Whether to use the IMU acceleration and gyroscope observations.",
     )
-    use_domain_randomization: bool = xax.field(
-        value=True,
-        help="Whether to use domain randomization.",
-    )
 
     # Curriculum parameters.
     num_curriculum_levels: int = xax.field(
@@ -487,12 +483,7 @@ class HumanoidWalkingTask(ksim.PPOTask[HumanoidWalkingTaskConfig]):
         ]
 
     def get_curriculum(self, physics_model: ksim.PhysicsModel) -> ksim.Curriculum:
-        return ksim.ConstantCurriculum(
-            # We toggle domain randomization by setting the curriculum level.
-            # Since the domain randomization functions all use this level,
-            # this effectively toggles them on and off.
-            level=1.0 if self.config.use_domain_randomization else 0.0,
-        )
+        return ksim.DistanceFromOriginCurriculum()
 
     def get_model(self, key: PRNGKeyArray) -> Model:
         return Model(
