@@ -460,7 +460,7 @@ class HumanoidWalkingTask(ksim.PPOTask[HumanoidWalkingTaskConfig]):
         return [
             # Standard rewards.
             ksim.NaiveForwardReward(clip_max=2.0, in_robot_frame=False, scale=3.0),
-            ksim.NaiveForwardOrientationReward(scale=3.0),
+            ksim.NaiveForwardOrientationReward(scale=1.0),
             ksim.StayAliveReward(scale=1.0),
             ksim.UprightReward(scale=0.5),
             # Avoid movement penalties.
@@ -488,6 +488,9 @@ class HumanoidWalkingTask(ksim.PPOTask[HumanoidWalkingTaskConfig]):
 
     def get_curriculum(self, physics_model: ksim.PhysicsModel) -> ksim.Curriculum:
         return ksim.ConstantCurriculum(
+            # We toggle domain randomization by setting the curriculum level.
+            # Since the domain randomization functions all use this level,
+            # this effectively toggles them on and off.
             level=1.0 if self.config.use_domain_randomization else 0.0,
         )
 
