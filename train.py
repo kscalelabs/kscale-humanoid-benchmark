@@ -115,7 +115,6 @@ class FeetPhaseReward(ksim.Reward):
     max_foot_height: float = 0.12
     ctrl_dt: float = 0.02
     sensitivity: float = 0.01
-    foot_default_height: float = 0.0
 
     def _gait_phase(self, phi: Array, swing_height: Array = jnp.array(0.08)) -> Array:
         """Interpolation logic for gait phase.
@@ -655,21 +654,22 @@ class HumanoidWalkingTask(ksim.PPOTask[HumanoidWalkingTaskConfig]):
                 backward_speed=1.0,
                 strafe_speed=1.0,
                 rotation_speed=math.radians(30),
+                ang_vel_penalty_scale=0.1,
                 scale=1.5,
             ),
             ksim.UprightReward(scale=0.5),
             # Normalisation penalties.
-            ksim.AvoidLimitsPenalty.create(physics_model, scale=-0.1),
-            ksim.JointAccelerationPenalty(scale=-0.01),
-            ksim.JointJerkPenalty(scale=-0.01),
-            ksim.LinkAccelerationPenalty(scale=-0.01),
-            ksim.LinkJerkPenalty(scale=-0.01),
-            ksim.AngularVelocityPenalty(index=("x", "y"), scale=-0.005),
-            ksim.LinearVelocityPenalty(index=("z",), scale=-0.005),
+            ksim.AvoidLimitsPenalty.create(physics_model, scale=-0.1, scale_by_curriculum=True),
+            ksim.JointAccelerationPenalty(scale=-0.01, scale_by_curriculum=True),
+            ksim.JointJerkPenalty(scale=-0.01, scale_by_curriculum=True),
+            ksim.LinkAccelerationPenalty(scale=-0.01, scale_by_curriculum=True),
+            ksim.LinkJerkPenalty(scale=-0.01, scale_by_curriculum=True),
+            ksim.AngularVelocityPenalty(index=("x", "y"), scale=-0.005, scale_by_curriculum=True),
+            ksim.LinearVelocityPenalty(index=("z",), scale=-0.005, scale_by_curriculum=True),
             # Bespoke rewards.
             BentArmPenalty.create_penalty(physics_model, scale=-0.1),
             StraightLegPenalty.create_penalty(physics_model, scale=-0.2),
-            FeetPhaseReward(scale=1.0, foot_default_height=0.04, max_foot_height=0.12),
+            FeetPhaseReward(scale=1.0, max_foot_height=0.21),
             FeetSlipPenalty(scale=-0.25),
             ContactForcePenalty(
                 scale=-0.03,
