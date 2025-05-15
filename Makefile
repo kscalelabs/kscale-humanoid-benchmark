@@ -7,18 +7,16 @@ install:
 .PHONY: install
 
 install-dev:
-	@pip install black ruff mypy
+	@pip install ruff mypy
 .PHONY: install-dev
 
 format:
-	@black $(py-files)
 	@ruff format $(py-files)
 	@ruff check --fix $(py-files)
 .PHONY: format
 
 static-checks:
 	@mkdir -p .mypy_cache
-	@black --diff --check $(py-files)
 	@ruff check $(py-files)
 	@mypy --install-types --non-interactive $(py-files)
 .PHONY: lint
