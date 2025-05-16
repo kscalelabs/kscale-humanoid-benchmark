@@ -69,10 +69,6 @@ class HumanoidWalkingTaskConfig(ksim.PPOConfig):
         value=True,
         help="Whether to use the IMU acceleration and gyroscope observations.",
     )
-    use_domain_randomization: bool = xax.field(
-        value=True,
-        help="Whether to use domain randomization.",
-    )
 
     # Curriculum parameters.
     num_curriculum_levels: int = xax.field(
@@ -459,22 +455,20 @@ class HumanoidWalkingTask(ksim.PPOTask[HumanoidWalkingTaskConfig]):
     def get_rewards(self, physics_model: ksim.PhysicsModel) -> list[ksim.Reward]:
         return [
             # Standard rewards.
-            ksim.NaiveForwardReward(clip_max=2.0, in_robot_frame=False, scale=3.0),
+            ksim.NaiveForwardReward(clip_max=1.25, in_robot_frame=False, scale=3.0),
             ksim.NaiveForwardOrientationReward(scale=1.0),
             ksim.StayAliveReward(scale=1.0),
             ksim.UprightReward(scale=0.5),
             # Avoid movement penalties.
-            ksim.AngularVelocityPenalty(index=("x", "y"), scale=-0.005),
-            ksim.LinearVelocityPenalty(index=("z"), scale=-0.005),
+            ksim.AngularVelocityPenalty(index=("x", "y"), scale=-0.1),
+            ksim.LinearVelocityPenalty(index=("z"), scale=-0.1),
             # Normalization penalties.
             ksim.AvoidLimitsPenalty.create(physics_model, scale=-0.01),
-            ksim.JointVelocityPenalty(scale=-0.01, scale_by_curriculum=True),
             ksim.JointAccelerationPenalty(scale=-0.01, scale_by_curriculum=True),
             ksim.JointJerkPenalty(scale=-0.01, scale_by_curriculum=True),
             ksim.LinkAccelerationPenalty(scale=-0.01, scale_by_curriculum=True),
             ksim.LinkJerkPenalty(scale=-0.01, scale_by_curriculum=True),
             ksim.ActionAccelerationPenalty(scale=-0.01, scale_by_curriculum=True),
-            ksim.CtrlPenalty(scale=-0.01, scale_by_curriculum=True),
             # Bespoke rewards.
             BentArmPenalty.create_penalty(physics_model, scale=-0.1),
             StraightLegPenalty.create_penalty(physics_model, scale=-0.1),
@@ -487,11 +481,8 @@ class HumanoidWalkingTask(ksim.PPOTask[HumanoidWalkingTaskConfig]):
         ]
 
     def get_curriculum(self, physics_model: ksim.PhysicsModel) -> ksim.Curriculum:
-        return ksim.ConstantCurriculum(
-            # We toggle domain randomization by setting the curriculum level.
-            # Since the domain randomization functions all use this level,
-            # this effectively toggles them on and off.
-            level=1.0 if self.config.use_domain_randomization else 0.0,
+        return ksim.DistanceFromOriginCurriculum(
+            min_level_steps=5,
         )
 
     def get_model(self, key: PRNGKeyArray) -> Model:
@@ -678,7 +669,7 @@ if __name__ == "__main__":
             ctrl_dt=0.02,
             iterations=8,
             ls_iterations=8,
-            action_latency_range=(0.003, 0.005),  # Simulate 3-5ms of latency.
+            action_latency_range=(0.003, 0.01),  # Simulate 3-10ms of latency.
             drop_action_prob=0.05,  # Drop 5% of commands.
             # Visualization parameters.
             render_track_body_id=0,
