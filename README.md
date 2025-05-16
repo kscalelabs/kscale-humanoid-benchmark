@@ -36,18 +36,18 @@ cd ksim-gym
 
 ```bash
 pip install -r requirements.txt
-pip install 'jax[cuda12]'  # If using GPU machine, install Jax CUDA libraries
+pip install 'jax[cuda12]'  # If using GPU machine, install JAX CUDA libraries
 python -c "import jax; print(jax.default_backend())" # Should print "gpu"
 ```
 
 6. Train a policy:
-  - Your robot should be walking by 80 learning steps, which takes 30 minutes on an RTX 4090 GPU
+  - Your robot should be walking within ~80 training steps, which takes 30 minutes on an RTX 4090 GPU
   - Training runs indefinitely, unless you set the `max_steps` argument. You can also use `Ctrl+C` to stop it.
-  - Click on the Tensorboard link in the terminal to visualize the current run's training logs and videos.
+  - Click on the TensorBoard link in the terminal to visualize the current run's training logs and videos.
 ```bash
 python -m train
 ```
-7. To see the Tensorboard logs for all your runs:
+7. To see the TensorBoard logs for all your runs:
 ```bash
 tensorboard --logdir humanoid_walking_task
 ```
@@ -71,14 +71,14 @@ kinfer-sim assets/model.kinfer kbot --start-height 1.2 --save-video video.mp4
 ```
 
 11. Commit the K-Infer model and the recorded video to this repository
-12. Push your code and model to your repository, and make sure the repository is public (you may need to use [git lfs](https://git-lfs.com))
+12. Push your code and model to your repository, and make sure the repository is public (you may need to use [Git LFS](https://git-lfs.com))
 13. Write a message with a link to your repository on our [Discord](https://url.kscale.dev/discord) in the "【🧠】submissions" channel
 14. Wait for one of us to run it on the real robot - this should take about a day, but if we are dragging our feet, please message us on Discord
 15. Voila! Your name will now appear on our [leaderboard](https://url.kscale.dev/leaderboard)
 
 ## Troubleshooting
 
-If you encounter issues, please consult the [ksim documentation](https://docs.kscale.dev/docs/ksim#/) or reach out to us on [Discord](https://url.kscale.dev/docs).
+If you encounter issues, please consult the [ksim documentation](https://docs.kscale.dev/docs/ksim#/) or reach out to us on [Discord](https://url.kscale.dev/discord).
 
 ## Tips and Tricks
 
@@ -88,7 +88,7 @@ To see all the available command line arguments, use the command:
 python -m train --help
 ```
 
-To visualize running your model without using `kos-sim`, use the command:
+To visualize running your model without using `kinfer-sim`, use the command:
 
 ```bash
 python -m train run_mode=view
