@@ -455,7 +455,7 @@ class HumanoidWalkingTask(ksim.PPOTask[HumanoidWalkingTaskConfig]):
     def get_rewards(self, physics_model: ksim.PhysicsModel) -> list[ksim.Reward]:
         return [
             # Standard rewards.
-            ksim.NaiveForwardReward(clip_max=2.0, in_robot_frame=False, scale=3.0),
+            ksim.NaiveForwardReward(clip_max=1.25, in_robot_frame=False, scale=3.0),
             ksim.NaiveForwardOrientationReward(scale=1.0),
             ksim.StayAliveReward(scale=1.0),
             ksim.UprightReward(scale=0.5),
