@@ -31,7 +31,7 @@ git clone git@github.com:<YOUR USERNAME>/ksim-gym.git
 cd ksim-gym
 ```
 
-4. Create a new Python environment (we require Python 3.11 or later and reccomend using [conda](https://docs.conda.io/projects/conda/en/stable/user-guide/getting-started.html))
+4. Create a new Python environment (we require Python 3.11 or later and recommend using [conda](https://docs.conda.io/projects/conda/en/stable/user-guide/getting-started.html))
 5. Install the package with its dependencies:
 
 ```bash
