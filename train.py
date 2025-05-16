@@ -483,7 +483,9 @@ class HumanoidWalkingTask(ksim.PPOTask[HumanoidWalkingTaskConfig]):
         ]
 
     def get_curriculum(self, physics_model: ksim.PhysicsModel) -> ksim.Curriculum:
-        return ksim.DistanceFromOriginCurriculum()
+        return ksim.DistanceFromOriginCurriculum(
+            min_level_steps=5,
+        )
 
     def get_model(self, key: PRNGKeyArray) -> Model:
         return Model(
