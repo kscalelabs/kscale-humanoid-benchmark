@@ -31,41 +31,58 @@ git clone git@github.com:<YOUR USERNAME>/ksim-gym.git
 cd ksim-gym
 ```
 
-4. Create a new Python environment (we require Python 3.11 or later)
+4. Create a new Python environment (we require Python 3.11 or later and recommend using [conda](https://docs.conda.io/projects/conda/en/stable/user-guide/getting-started.html))
 5. Install the package with its dependencies:
 
 ```bash
 pip install -r requirements.txt
-pip install 'jax[cuda12]'  # If using GPU machine, install Jax CUDA libraries
+pip install 'jax[cuda12]'  # If using GPU machine, install JAX CUDA libraries
+python -c "import jax; print(jax.default_backend())" # Should print "gpu"
 ```
 
 6. Train a policy:
-
+  - Your robot should be walking within ~80 training steps, which takes 30 minutes on an RTX 4090 GPU
+  - Training runs indefinitely, unless you set the `max_steps` argument. You can also use `Ctrl+C` to stop it.
+  - Click on the TensorBoard link in the terminal to visualize the current run's training logs and videos.
 ```bash
 python -m train
 ```
+```bash
+# You can override default arguments like this
+python -m train max_steps=100
+```
+7. To see the TensorBoard logs for all your runs:
+```bash
+tensorboard --logdir humanoid_walking_task
+```
+8. To view your trained checkpoint in the interactive viewer:
+- Use the mouse to move the camera around
+- Hold `Ctrl` and double click to select a body on the robot, and then left or right click to apply forces to it.
+```bash
+python -m train run_mode=view load_from_ckpt_path=humanoid_walking_task/run_<number>/checkpoints/ckpt.bin
+```
 
-7. Convert the checkpoint to a `kinfer` model:
+9. Convert your trained checkpoint to a `kinfer` model, which can be deployed on a real robot:
 
 ```bash
 python -m convert /path/to/ckpt.bin /path/to/model.kinfer
 ```
 
-8. Visualize the converted model:
+10. Visualize the converted model in [`kinfer-sim`](https://docs.kscale.dev/docs/k-infer):
 
 ```bash
 kinfer-sim assets/model.kinfer kbot --start-height 1.2 --save-video video.mp4
 ```
 
-9. Commit the K-Infer model and the recorded video to this repository
-10. Push your code and model to your repository, and make sure the repository is public (you may need to use [git lfs](https://git-lfs.com))
-11. Write a message with a link to your repository on our [Discord](https://url.kscale.dev/discord) in the "【🧠】submissions" channel
-12. Wait for one of us to run it on the real robot - this should take about a day, but if we are dragging our feet, please message us on Discord
-13. Voila! Your name will now appear on our [leaderboard](https://url.kscale.dev/leaderboard)
+11. Commit the K-Infer model and the recorded video to this repository
+12. Push your code and model to your repository, and make sure the repository is public (you may need to use [Git LFS](https://git-lfs.com))
+13. Write a message with a link to your repository on our [Discord](https://url.kscale.dev/discord) in the "【🧠】submissions" channel
+14. Wait for one of us to run it on the real robot - this should take about a day, but if we are dragging our feet, please message us on Discord
+15. Voila! Your name will now appear on our [leaderboard](https://url.kscale.dev/leaderboard)
 
 ## Troubleshooting
 
-If you encounter issues, please consult the [ksim documentation](https://docs.kscale.dev/docs/ksim#/) or reach out to us on [Discord](https://url.kscale.dev/docs).
+If you encounter issues, please consult the [ksim documentation](https://docs.kscale.dev/docs/ksim#/) or reach out to us on [Discord](https://url.kscale.dev/discord).
 
 ## Tips and Tricks
 
@@ -75,7 +92,7 @@ To see all the available command line arguments, use the command:
 python -m train --help
 ```
 
-To visualize running your model without using `kos-sim`, use the command:
+To visualize running your model without using `kinfer-sim`, use the command:
 
 ```bash
 python -m train run_mode=view
