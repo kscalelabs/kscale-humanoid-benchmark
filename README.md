@@ -47,6 +47,10 @@ python -c "import jax; print(jax.default_backend())" # Should print "gpu"
 ```bash
 python -m train
 ```
+```bash
+# You can override default arguments like this
+python -m train max_steps=100
+```
 7. To see the TensorBoard logs for all your runs:
 ```bash
 tensorboard --logdir humanoid_walking_task
