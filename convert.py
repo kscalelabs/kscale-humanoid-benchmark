@@ -56,10 +56,13 @@ def main() -> None:
         projected_gravity: Array,
         accelerometer: Array,
         gyroscope: Array,
+        time: Array,
         carry: Array,
     ) -> tuple[Array, Array]:
         obs = jnp.concatenate(
             [
+                jnp.sin(time),
+                jnp.cos(time),
                 joint_angles,
                 joint_angular_velocities,
                 projected_gravity,
