@@ -1,9 +1,10 @@
 <div align="center">
-<h1>K-Sim Gym</h1>
+<h1>💪🏼 K-Sim Gym</h1>
 <p>Train and deploy your own humanoid robot controller in 700 lines of Python</p>
 <h3>
   <a href="https://url.kscale.dev/leaderboard">Leaderboard</a> ·
-  <a href="https://docs.kscale.dev/docs/quick-start#/">Documentation</a> ·
+  <a href="https://docs.kscale.dev/docs/quick-start#/">Documentation</a>
+  <br />
   <a href="https://github.com/kscalelabs/ksim/tree/master/examples">K-Sim Examples</a> ·
   <a href="https://github.com/kscalelabs/kbot-joystick">Joystick Example</a>
 </h3>
