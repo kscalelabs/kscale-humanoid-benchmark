@@ -2,6 +2,7 @@
 <h1>💪🏼 K-Sim Gym</h1>
 <p>Train and deploy your own humanoid robot controller in 700 lines of Python</p>
 <h3>
+  <a href="https://youtu.be/c64FnSvj8kQ">Tutorial</a> ·
   <a href="https://url.kscale.dev/leaderboard">Leaderboard</a> ·
   <a href="https://docs.kscale.dev/docs/quick-start#/">Documentation</a>
   <br />
