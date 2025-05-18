@@ -10,9 +10,12 @@
   <a href="https://github.com/kscalelabs/kbot-joystick">Joystick Example</a>
 </h3>
 
-https://github.com/user-attachments/assets/0cc2ab3b-60da-46cc-97fe-699650a1be2b
+https://github.com/user-attachments/assets/82e5e998-1d62-43e2-ae52-864af6e72629
+
+K-Sim tutorial/explainer video: https://www.youtube.com/watch?v=c64FnSvj8kQ
 
 </div>
+
 
 ## Getting Started
 
