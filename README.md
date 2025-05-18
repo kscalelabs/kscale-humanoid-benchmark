@@ -10,7 +10,7 @@
   <a href="https://github.com/kscalelabs/kbot-joystick">Joystick Example</a>
 </h3>
 
-https://github.com/user-attachments/assets/3d44aa23-5ad7-41a3-b467-22165542b8c4
+https://github.com/user-attachments/assets/0cc2ab3b-60da-46cc-97fe-699650a1be2b
 
 </div>
 
@@ -43,9 +43,10 @@ python -c "import jax; print(jax.default_backend())" # Should print "gpu"
 ```
 
 6. Train a policy:
-  - Your robot should be walking within ~80 training steps, which takes 30 minutes on an RTX 4090 GPU
+  - Your robot should be walking within ~80 training steps, which takes 30 minutes on an RTX 4090 GPU.
   - Training runs indefinitely, unless you set the `max_steps` argument. You can also use `Ctrl+C` to stop it.
   - Click on the TensorBoard link in the terminal to visualize the current run's training logs and videos.
+  - List all the avaiable arguments with `python -m train --help`.
 ```bash
 python -m train
 ```
