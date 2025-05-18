@@ -9,9 +9,23 @@
   <a href="https://github.com/kscalelabs/kbot-joystick">Joystick Example</a>
 </h3>
 
-https://github.com/user-attachments/assets/3d44aa23-5ad7-41a3-b467-22165542b8c4
+https://github.com/user-attachments/assets/0cc2ab3b-60da-46cc-97fe-699650a1be2b
+
 
 </div>
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 ## Getting Started
 
