@@ -46,7 +46,7 @@ python -c "import jax; print(jax.default_backend())" # Should print "gpu"
   - Your robot should be walking within ~80 training steps, which takes 30 minutes on an RTX 4090 GPU.
   - Training runs indefinitely, unless you set the `max_steps` argument. You can also use `Ctrl+C` to stop it.
   - Click on the TensorBoard link in the terminal to visualize the current run's training logs and videos.
-  - List all the avaiable arguments with `python -m train --help`.
+  - List all the available arguments with `python -m train --help`.
 ```bash
 python -m train
 ```
