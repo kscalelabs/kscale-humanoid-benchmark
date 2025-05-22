@@ -70,24 +70,6 @@ class HumanoidWalkingTaskConfig(ksim.PPOConfig):
         help="Whether to use the IMU acceleration and gyroscope observations.",
     )
 
-    # Curriculum parameters.
-    num_curriculum_levels: int = xax.field(
-        value=100,
-        help="The number of curriculum levels to use.",
-    )
-    increase_threshold: float = xax.field(
-        value=5.0,
-        help="Increase the curriculum level when the mean trajectory length is above this threshold.",
-    )
-    decrease_threshold: float = xax.field(
-        value=1.0,
-        help="Decrease the curriculum level when the mean trajectory length is below this threshold.",
-    )
-    min_level_steps: int = xax.field(
-        value=1,
-        help="The minimum number of steps to wait before changing the curriculum level.",
-    )
-
     # Optimizer parameters.
     learning_rate: float = xax.field(
         value=3e-4,
