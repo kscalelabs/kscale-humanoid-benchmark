@@ -14,7 +14,6 @@ https://github.com/user-attachments/assets/82e5e998-1d62-43e2-ae52-864af6e72629
 
 </div>
 
-
 ## Getting Started
 
 You can use this repository as a GitHub template or as a Google Colab.
@@ -25,7 +24,7 @@ You can quickly try out the humanoid benchmark by running the [training notebook
 
 ### On your own GPU
 
-1. Read through the [current leaderboard](https://url.kscale.dev/leaderboard) submissions and through the [ksim examples](https://github.com/kscalelabs/ksim/tree/master/examples)
+1. Read through the [current leaderboard](https://www.kscale.dev/benchmarks) submissions and through the [ksim examples](https://github.com/kscalelabs/ksim/tree/master/examples)
 2. Create a new repository from this template by clicking [here](https://github.com/new?template_name=ksim-gym&template_owner=kscalelabs)
 3. Clone the new repository you create from this template:
 
